@@ -659,6 +659,8 @@ class Settings(BaseSettings):
     nemo_speech_path: Optional[str] = None
     nemotron_model_path: Optional[str] = None
     transcription_diarize: bool = False
+    # Selected by the desktop bridge per process before settings are loaded.
+    clipping_mode: Literal["quality", "economy"] = "quality"
 
     @field_validator("planner_reasoning_effort", "layout_vision_reasoning_effort")
     @classmethod
@@ -794,8 +796,9 @@ class Settings(BaseSettings):
 
     @property
     def transcription_model(self) -> str:
-        return ("nvidia/nemotron-3.5-asr-streaming-0.6b" if self.transcription_backend == "nemotron"
-                else "microsoft/mai-transcribe-2")
+        if self.transcription_backend == "nemotron":
+            return "nvidia/nemotron-3.5-asr-streaming-0.6b"
+        return "openai/whisper-large-v3-turbo" if self.clipping_mode == "economy" else "microsoft/mai-transcribe-2"
 
     # OpenRouter / LLM Configuration
     @property

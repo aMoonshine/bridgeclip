@@ -37,14 +37,21 @@ function endpoint(name: 'BRIDGECLIP_E2E_OPENROUTER_URL', production: string): st
   return app.isPackaged ? production : process.env[name] || production
 }
 
-async function providerResponse(response: Response, provider: string, maxBytes = 100_000): Promise<Record<string, unknown>> {
-  if (!response.ok) throw new Error(`${provider} could not prepare this clip (${response.status}). Check its key and credits in Settings.`)
-  const raw = await readResponseText(response, maxBytes, `${provider} returned too much metadata.`)
+async function providerResponse(response: Response, operation: 'transcription' | 'metadata', maxBytes = 100_000): Promise<Record<string, unknown>> {
+  if (!response.ok) {
+    const status = response.status
+    if (status === 401 || status === 403) throw new Error('OpenRouter rejected the API key. Check it in Settings.')
+    if (status === 402) throw new Error('OpenRouter reports insufficient credits. Check your OpenRouter account.')
+    if (status === 429) throw new Error('OpenRouter is rate limiting requests. Try again shortly.')
+    if (status === 400) throw new Error(`OpenRouter rejected the ${operation} request (400). ${operation === 'transcription' ? 'The clip audio or request format may be unsupported.' : 'Try again or use manual metadata.'}`)
+    throw new Error(`OpenRouter ${operation} failed (${status}). Try again later.`)
+  }
+  const raw = await readResponseText(response, maxBytes, 'OpenRouter returned too much metadata.')
   try {
     const parsed: unknown = JSON.parse(raw)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed as Record<string, unknown>
   } catch { /* Safe fixed error below. */ }
-  throw new Error(`${provider} returned an invalid response. Try again.`)
+  throw new Error('OpenRouter returned an invalid response. Try again.')
 }
 
 /** Transcribe with the bundled Nemotron runtime before writing metadata with GLM. */
@@ -55,9 +62,10 @@ export async function transcribeAutomationClip(path: string): Promise<string> {
     // Bound local inference memory by splitting long audio into five-minute WAVs.
     await execFileAsync(resolveBinary('ffmpeg'), [
       '-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file,pipe,fd',
-      '-format_whitelist', 'mov,matroska,webm,avi,flv', '-i', path, '-vn',
+      '-format_whitelist', 'mov,matroska,webm,avi,flv', '-i', path, '-map', '0:a:0', '-vn',
+      '-af', 'aresample=16000:async=1:first_pts=0:min_hard_comp=0.001',
       '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
-      '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', join(directory, 'speech-%04d.wav')
+      '-f', 'segment', '-segment_format', 'wav', '-segment_time', '300', '-reset_timestamps', '1', join(directory, 'speech-%04d.wav')
     ], { timeout: 120_000, maxBuffer: 100_000 })
     const files = (await readdir(directory)).filter((file) => /^speech-\d{4}\.wav$/.test(file)).sort()
     let totalBytes = 0
@@ -196,7 +204,7 @@ export async function generateAutomationMetadata(transcript: string, title: stri
         { role: 'user', content: JSON.stringify(input) },
         ...(validationFeedback ? [{ role: 'user', content: `Regenerate all posts. The previous result failed validation: ${validationFeedback} Check every platform's required fields and caption rules. Copy each evidence phrase as a contiguous excerpt of the transcript. Remove any claim that cannot be supported by that excerpt. Use a Threads topic only when it appears verbatim in the transcript.` }] : [])
       ], response_format: { type: 'json_schema', json_schema: { name: 'automation_metadata', strict: true, schema } }, provider: { require_parameters: true }, max_tokens: 4000 })
-    }), 'OpenRouter') } catch (error) {
+    }), 'metadata') } catch (error) {
       if (error instanceof Error && error.message.startsWith('OpenRouter')) throw error
       throw new Error('OpenRouter could not be reached. The clip was not posted; try again later.')
     }

@@ -317,7 +317,8 @@ export function startClipJob(
   jobId: string,
   config: ClipJobConfig,
   sink: JobEventSink,
-  onExit?: () => void
+  onExit?: () => void,
+  queuedOutputDirectory?: string
 ): void {
   const send = (channel: string, payload: unknown): void => {
     if (!sink.isDestroyed() && !sink.webContents.isDestroyed()) sink.webContents.send(channel, payload)
@@ -325,7 +326,9 @@ export function startClipJob(
   // Runs that never spawned a process still release their slot, just not
   // re-entrantly inside the caller's start.
   const exitWithoutProcess = (): void => { if (onExit) queueMicrotask(onExit) }
-  const settings = loadSettings()
+  // A queued job keeps the output folder chosen when its run record was
+  // created, even if Settings changes before a worker slot opens.
+  const settings = { ...loadSettings(), ...(queuedOutputDirectory ? { outputDirectory: queuedOutputDirectory } : {}) }
   const finishHistory = (status: Exclude<StoredRunStatus, 'running'>, message: string | null = null): void => {
     try { finishRunRecord(settings.outputDirectory, jobId, status, message) }
     catch { logger.warn('job.history.writeFailed', { jobId }) }
@@ -381,12 +384,13 @@ export function startClipJob(
     contract_version: BRIDGE_CONTRACT_VERSION,
     job_id: jobId,
     video_url: config.videoUrl,
+    clipping_mode: config.clippingMode ?? 'quality',
     max_clips: config.maxClips,
     auto_clip_count: config.autoClipCount,
     duration_ranges: config.durationRanges,
     aspect_ratio: config.aspectRatio,
     layout_style: config.layoutStyle || 'auto',
-    layout_vision_enabled: config.layoutVision,
+    layout_vision_enabled: config.clippingMode === 'economy' ? false : config.layoutVision,
     pacing: config.pacing || 'tight',
     include_captions: config.includeCaptions,
     caption_preset: config.captionPreset,
