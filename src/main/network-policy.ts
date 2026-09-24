@@ -38,7 +38,7 @@ export function isPublicAddress(address: string): boolean {
   return false
 }
 
-export async function assertPublicWebUrl(value: string): Promise<void> {
+export async function assertPublicWebUrl(value: string, label = 'Source'): Promise<void> {
   if (!isWebUrl(value)) throw new Error('A public HTTP(S) URL is required')
   const hostname = new URL(value).hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.$/, '')
   if (hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) throw new Error('Local network sources are not allowed')
@@ -52,6 +52,12 @@ export async function assertPublicWebUrl(value: string): Promise<void> {
       lookup(hostname, { all: true }),
       new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Source hostname lookup timed out')), 5000) })
     ])
-    if (!addresses.length || addresses.some(({ address }) => !isPublicAddress(address))) throw new Error('Source must resolve to a public network address')
+    if (!addresses.length) throw new Error(`${label} host “${hostname}” did not resolve. Check the URL and DNS connection.`)
+    if (addresses.some(({ address }) => !isPublicAddress(address))) {
+      throw new Error(`${label} host “${hostname}” resolved to a private or reserved address. Check your VPN or DNS settings.`)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith(`${label} host `)) throw error
+    throw new Error(`${label} host “${hostname}” could not be verified. Check your DNS connection and retry.`)
   } finally { if (timer) clearTimeout(timer) }
 }

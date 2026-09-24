@@ -147,9 +147,9 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
     try {
       config = validateJobConfig(config)
-      if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl)
+      if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl, 'Video source')
       else assertMediaPath(config.videoUrl, loadSettings().outputDirectory)
-      if (config.bannerChannelUrl) await assertPublicWebUrl(config.bannerChannelUrl)
+      if (config.bannerChannelUrl) await assertPublicWebUrl(config.bannerChannelUrl, 'Banner channel URL')
     } catch (error) { return { error: error instanceof Error ? error.message : 'Invalid job options' } }
     const settings = loadSettings()
 
