@@ -43,13 +43,16 @@ test('provider redirects cannot forward audio, custom API keys, or transcripts',
   let leaked = 0
   const sink = await server((req, res) => { leaked++; req.resume(); res.end('{}') })
   const redirect = await server((req, res) => { req.resume(); res.writeHead(307, { Location: `${sink.url}/capture` }); res.end() })
-  const names = ['BRIDGECLIP_E2E_TRANSCRIPTION_URL', 'BRIDGECLIP_E2E_OPENROUTER_URL']
+  const names = ['BRIDGECLIP_E2E_NEMO_SCRIPT', 'BRIDGECLIP_E2E_OPENROUTER_URL']
   const previous = names.map((name) => process.env[name])
   try {
-    for (const name of names) process.env[name] = redirect.url
+    const nemoScript = path.join(dir, 'silent-nemo.cjs')
+    fs.writeFileSync(nemoScript, 'process.stdout.write(JSON.stringify({text:""}))\n')
+    process.env.BRIDGECLIP_E2E_NEMO_SCRIPT = nemoScript
+    process.env.BRIDGECLIP_E2E_OPENROUTER_URL = redirect.url
     const api = main(dir)
     const file = path.join(dir, 'valid.mp4'); clip(file)
-    await assert.rejects(api.transcribeAutomationClip(file), /could not be transcribed/)
+    await assert.rejects(api.transcribeAutomationClip(file), /Nemotron|No speech|could not be transcribed/)
     await assert.rejects(api.generateAutomationMetadata('private transcript', '', '', ['instagram']), /could not be reached/)
     assert.equal(leaked, 0)
   } finally {
@@ -74,14 +77,18 @@ test('oversized provider streams are cancelled before the full body is buffered'
   } finally { global.fetch = oldFetch; cleanup() }
 })
 
-test('post cache writes do not follow predictable temporary-file symlinks', () => {
+test('post cache writes do not follow predictable temporary-file symlinks', (t) => {
   const { dir, cleanup } = tempDir()
   try {
     const { PostsStore } = loadMain("export { PostsStore } from './src/main/zernio/posts-store'", { electron: fakeElectron(dir).electron })
     const cache = path.join(dir, 'posts.json')
     const victim = path.join(dir, 'unrelated.txt')
     fs.writeFileSync(victim, 'keep me')
-    fs.symlinkSync(victim, `${cache}.tmp`)
+    try { fs.symlinkSync(victim, `${cache}.tmp`) }
+    catch (error) {
+      if (process.platform === 'win32' && ['EPERM', 'EACCES'].includes(error.code)) { t.skip('Creating symlinks requires Windows Developer Mode or elevated rights'); return }
+      throw error
+    }
     new PostsStore(cache).save()
     assert.equal(fs.readFileSync(victim, 'utf8'), 'keep me')
   } finally { cleanup() }

@@ -1,5 +1,5 @@
 """
-Transcription Service - Audio transcription using MAI Transcribe 2 through OpenRouter.
+Transcription Service - local Nemotron ASR or MAI Transcribe 2 through OpenRouter.
 """
 
 import asyncio
@@ -54,6 +54,8 @@ class TranscriptionApiCosts:
 
 
 TRANSCRIPTION_MODEL = "microsoft/mai-transcribe-2"
+NEMOTRON_MODEL = "nvidia/nemotron-3.5-asr-streaming-0.6b"
+NEMOTRON_FILENAME = "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf"
 TRANSCRIPTION_CHUNK_SECONDS = 300
 MAX_TRANSCRIPTION_AUDIO_BYTES = 12 * 1024 * 1024
 MAX_TRANSCRIPTION_RESPONSE_BYTES = 4 * 1024 * 1024
@@ -405,7 +407,7 @@ def find_sentence_start_boundary(
 
 
 class TranscriptionService:
-    """MAI Transcribe 2 speech recognition with word timing and speaker turns."""
+    """Word-timed transcription through local Nemotron or OpenRouter."""
 
     def __init__(self):
         self.settings = get_settings()
@@ -516,17 +518,18 @@ class TranscriptionService:
         """Transcribe bounded chunks and retain timestamps on the source timeline."""
         if not os.path.isfile(audio_path):
             raise TranscriptionError("Audio file not found", reason="audio_missing")
-        if not self.settings.openrouter_api_key:
+        backend = getattr(self.settings, "transcription_backend", "openrouter")
+        if backend == "openrouter" and not self.settings.openrouter_api_key:
             raise TranscriptionProviderError("auth")
         if translate_to_english:
-            raise TranscriptionError("MAI Transcribe 2 does not translate audio", reason="translation_unsupported")
+            raise TranscriptionError("The configured transcription model does not translate audio", reason="translation_unsupported")
         duration = await asyncio.to_thread(self._audio_duration, audio_path)
         segments: list[TranscriptSegment] = []
         total_cost = 0.0
         billed_seconds = 0.0
         detected_language = None
         chunk_count = max(1, math.ceil(duration / TRANSCRIPTION_CHUNK_SECONDS))
-        with tempfile.TemporaryDirectory(prefix="mai-transcribe-", dir=os.path.dirname(audio_path)) as work:
+        with tempfile.TemporaryDirectory(prefix="bridgeclip-transcribe-", dir=os.path.dirname(audio_path)) as work:
             for index in range(chunk_count):
                 core_start = index * TRANSCRIPTION_CHUNK_SECONDS
                 core_end = min(duration, core_start + TRANSCRIPTION_CHUNK_SECONDS)
@@ -538,8 +541,12 @@ class TranscriptionService:
                 if chunk_count > 1:
                     chunk_path = os.path.join(work, "chunk.wav")
                     await asyncio.to_thread(self._extract_chunk, audio_path, chunk_path, start, end - start)
-                response = await self._request_transcript(chunk_path, language, keyterms)
-                parsed = self._parse_openrouter_response(response, end - start)
+                if backend == "nemotron":
+                    response = await self._request_nemotron_transcript(chunk_path, language, keyterms)
+                    parsed = self._parse_nemotron_response(response, end - start)
+                else:
+                    response = await self._request_transcript(chunk_path, language, keyterms)
+                    parsed = self._parse_openrouter_response(response, end - start)
                 detected_language = detected_language or parsed.language
                 if parsed.api_costs:
                     total_cost += parsed.api_costs.estimated_cost_usd
@@ -562,9 +569,74 @@ class TranscriptionService:
         return TranscriptionResult(
             segments=segments, full_text=" ".join(segment.text for segment in segments),
             language=detected_language, duration_seconds=duration,
-            api_costs=TranscriptionApiCosts(audio_duration_seconds=billed_seconds,
+            provider="local" if backend == "nemotron" else "openrouter",
+            model=NEMOTRON_MODEL if backend == "nemotron" else TRANSCRIPTION_MODEL,
+            api_costs=TranscriptionApiCosts(provider="local" if backend == "nemotron" else "openrouter",
+                                             model=NEMOTRON_MODEL if backend == "nemotron" else TRANSCRIPTION_MODEL,
+                                             audio_duration_seconds=billed_seconds,
                                              estimated_cost_usd=round(total_cost, 8)),
         )
+
+    def _nemotron_runtime(self) -> tuple[str, str]:
+        """Use the checked-in project's local runtime and model unless overridden."""
+        root = Path(__file__).resolve().parents[3]
+        executable = getattr(self.settings, "nemo_speech_path", None)
+        if not executable:
+            bundled = root / "engine-bin" / "nemo-speech" / "bin" / ("nemo-speech.exe" if os.name == "nt" else "nemo-speech")
+            executable = str(bundled)
+        model = getattr(self.settings, "nemotron_model_path", None) or str(root / "engine-bin" / "models" / NEMOTRON_FILENAME)
+        if not executable or not Path(executable).is_file():
+            raise TranscriptionError("Local Nemotron runtime is unavailable", reason="local_unavailable")
+        if not Path(model).is_file():
+            raise TranscriptionError("Local Nemotron model is unavailable", reason="local_unavailable")
+        return executable, model
+
+    async def _request_nemotron_transcript(self, audio_path: str, language: Optional[str], keyterms: Optional[list[str]]) -> dict:
+        """Run NVIDIA's local CLI; stderr may contain paths and never reaches the UI."""
+        executable, model = self._nemotron_runtime()
+        locale = {"ru": "ru-RU", "en": "en-US", "uk": "uk-UA"}.get(language or "auto", language or "auto")
+        command = [executable, "transcribe", audio_path, "--model", model,
+                   "--language", locale, "--format", "json"]
+        for term in normalize_keyterms(keyterms)[:20]:
+            command.extend(("--speech-context", term))
+        try:
+            result = await asyncio.to_thread(subprocess.run, command, capture_output=True, timeout=900, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            raise TranscriptionError("Local Nemotron transcription failed", reason="local_failed") from None
+        if result.returncode != 0 or len(result.stdout) > MAX_TRANSCRIPTION_RESPONSE_BYTES:
+            raise TranscriptionError("Local Nemotron transcription failed", reason="local_failed")
+        try:
+            response = json.loads(result.stdout)
+        except (UnicodeError, ValueError):
+            raise TranscriptionProviderError("invalid_response") from None
+        if not isinstance(response, dict):
+            raise TranscriptionProviderError("invalid_response")
+        return response
+
+    def _parse_nemotron_response(self, response: dict, audio_duration: float) -> TranscriptionResult:
+        """Adapt NVIDIA's one-based speaker IDs to BridgeClip's word parser."""
+        raw_words = response.get("words")
+        if isinstance(raw_words, list):
+            words = []
+            for raw in raw_words:
+                if not isinstance(raw, dict):
+                    raise TranscriptionProviderError("invalid_response")
+                word = dict(raw)
+                speaker = word.get("speaker")
+                if type(speaker) is int and speaker > 0:
+                    word["speaker"] = speaker - 1
+                words.append(word)
+            response = {**response, "words": words}
+        if not response.get("language") and isinstance(response.get("languages"), list):
+            languages = response["languages"]
+            if languages and isinstance(languages[0], str):
+                response = {**response, "language": languages[0]}
+        parsed = self._parse_openrouter_response({**response, "usage": {"seconds": audio_duration, "cost": 0}}, audio_duration)
+        parsed.provider = "local"
+        parsed.model = NEMOTRON_MODEL
+        parsed.api_costs = TranscriptionApiCosts(provider="local", model=NEMOTRON_MODEL,
+                                                  audio_duration_seconds=audio_duration, estimated_cost_usd=0)
+        return parsed
 
     @staticmethod
     def _audio_duration(path: str) -> float:

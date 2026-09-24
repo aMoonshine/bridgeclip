@@ -17,6 +17,7 @@ import os
 import re
 import shutil
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Optional, Union
@@ -875,8 +876,17 @@ class RenderingService:
         for extra in (extra_inputs or []):
             cmd.extend(["-loop", "1", "-protocol_whitelist", "file,pipe,fd", "-i", extra])
 
+        filter_script = None
+        if os.name == "nt" and len(filter_complex) > 8000:
+            # Windows limits CreateProcess command lines; long pacing edits can
+            # contain hundreds of filters. FFmpeg reads the same graph from a file.
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".ffgraph",
+                                             dir=os.path.dirname(output_path), delete=False) as script:
+                script.write(filter_complex)
+                filter_script = script.name
         cmd.extend([
-            "-filter_complex", filter_complex,
+            "-filter_complex_script" if filter_script else "-filter_complex",
+            filter_script or filter_complex,
             "-map", "[out]",
             # MP4 edit lists account for AAC priming and reordered video.
             # make_zero shifts presentation time by encoder delay, moving the
@@ -911,6 +921,12 @@ class RenderingService:
             except OSError:
                 pass
             raise
+        finally:
+            if filter_script:
+                try:
+                    os.remove(filter_script)
+                except OSError:
+                    pass
 
     async def _validate_output_timing(
         self, output_path: str, duration_ms: int, fps: str, with_audio: bool,

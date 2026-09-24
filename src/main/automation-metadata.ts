@@ -1,6 +1,7 @@
 import { app } from 'electron'
 import { execFile } from 'child_process'
-import { mkdtemp, readFile, readdir, rm, stat } from 'fs/promises'
+import { existsSync } from 'fs'
+import { mkdtemp, readdir, rm, stat } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -13,7 +14,7 @@ import { readResponseText } from './http-response'
 const execFileAsync = promisify(execFile)
 type Platform = (typeof AUTOMATION_PLATFORMS)[number]
 const CATEGORY_IDS = new Set(['1', '10', '20', '22', '24', '27', '28'])
-const MODEL = 'openai/gpt-4.1-mini'
+const MODEL = 'z-ai/glm-5.3-flash'
 const MAX_TRANSCRIPT = 20_000
 export interface MetadataContext { facebookFormat?: FacebookFormat }
 
@@ -32,7 +33,7 @@ function youtubeTagsLength(tags: string[]): number {
   return tags.reduce((length, tag, index) => length + [...tag].length + (/\s/.test(tag) ? 2 : 0) + (index > 0 ? 1 : 0), 0)
 }
 
-function endpoint(name: 'BRIDGECLIP_E2E_TRANSCRIPTION_URL' | 'BRIDGECLIP_E2E_OPENROUTER_URL', production: string): string {
+function endpoint(name: 'BRIDGECLIP_E2E_OPENROUTER_URL', production: string): string {
   return app.isPackaged ? production : process.env[name] || production
 }
 
@@ -46,40 +47,41 @@ async function providerResponse(response: Response, provider: string, maxBytes =
   throw new Error(`${provider} returned an invalid response. Try again.`)
 }
 
-/** Use the same OpenRouter account for speech recognition and metadata writing. */
+/** Transcribe with the bundled Nemotron runtime before writing metadata with GLM. */
 export async function transcribeAutomationClip(path: string): Promise<string> {
   const settings = loadSettings()
-  const key = settings.openrouterApiKey
-  if (!key) throw new Error('Add an OpenRouter API key in Settings to transcribe automation clips.')
   const directory = await mkdtemp(join(tmpdir(), 'bridgeclip-transcript-'))
   try {
-    // Bound each request rather than sending an entire long recording to STT.
+    // Bound local inference memory by splitting long audio into five-minute WAVs.
     await execFileAsync(resolveBinary('ffmpeg'), [
       '-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file,pipe,fd',
       '-format_whitelist', 'mov,matroska,webm,avi,flv', '-i', path, '-vn',
-      '-acodec', 'aac', '-ab', '64k', '-ar', '16000', '-ac', '1',
-      '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', join(directory, 'speech-%04d.m4a')
+      '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1',
+      '-f', 'segment', '-segment_time', '300', '-reset_timestamps', '1', join(directory, 'speech-%04d.wav')
     ], { timeout: 120_000, maxBuffer: 100_000 })
-    const files = (await readdir(directory)).filter((file) => /^speech-\d{4}\.m4a$/.test(file)).sort()
+    const files = (await readdir(directory)).filter((file) => /^speech-\d{4}\.wav$/.test(file)).sort()
     let totalBytes = 0
     for (const file of files) totalBytes += (await stat(join(directory, file))).size
-    if (totalBytes > 50 * 1024 * 1024) throw new Error('The clip audio is too long for automatic metadata. Use manual metadata.')
-    const phrases = vocabularyTerms(settings.customVocabulary)
+    if (totalBytes > 60 * 1024 * 1024) throw new Error('The clip audio is too long for automatic metadata. Use manual metadata.')
+    const runtimeDir = app.isPackaged ? join(process.resourcesPath, 'engine-bin') : join(__dirname, '..', '..', 'engine-bin')
+    const nemo = join(runtimeDir, 'nemo-speech', 'bin', process.platform === 'win32' ? 'nemo-speech.exe' : 'nemo-speech')
+    const model = join(runtimeDir, 'models', 'nemotron-3.5-asr-streaming-0.6b.q8_0.gguf')
+    const testScript = !app.isPackaged ? process.env.BRIDGECLIP_E2E_NEMO_SCRIPT : undefined
+    if ((!testScript && (!existsSync(nemo) || !existsSync(model))) || (testScript && !existsSync(testScript))) {
+      throw new Error('The local Nemotron runtime or model is missing.')
+    }
+    const phrases = vocabularyTerms(settings.customVocabulary).slice(0, 20)
     let transcript = ''
     for (const file of files) {
-      const bytes = await readFile(join(directory, file))
-      const result = await providerResponse(await fetch(endpoint('BRIDGECLIP_E2E_TRANSCRIPTION_URL', 'https://openrouter.ai/api/v1/audio/transcriptions'), {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'microsoft/mai-transcribe-2', input_audio: { data: bytes.toString('base64'), format: 'm4a' },
-          response_format: 'json',
-          ...(phrases.length ? { provider: { options: { azure: { phraseList: { phrases } } } } } : {})
-        }),
-        redirect: 'error', signal: AbortSignal.timeout(90_000)
-      }), 'OpenRouter', 2_000_000)
-      if (typeof result.text !== 'string') throw new Error('OpenRouter returned an invalid transcript. Try again.')
-      const text = [...result.text].map((character) => {
+      const args = [...(testScript ? [testScript] : []), 'transcribe', join(directory, file), '--model', model, '--language', 'auto', '--format', 'json',
+        ...phrases.flatMap((phrase) => ['--speech-context', phrase])]
+      const { stdout } = await execFileAsync(testScript ? process.execPath : nemo, args, { timeout: 900_000, maxBuffer: 4_000_000 })
+      const result: unknown = JSON.parse(stdout)
+      if (!result || typeof result !== 'object' || typeof (result as { text?: unknown }).text !== 'string') {
+        throw new Error('Local Nemotron returned an invalid transcript.')
+      }
+      const rawText = (result as { text: string }).text
+      const text = [...rawText].map((character) => {
         const code = character.charCodeAt(0)
         return code <= 31 || code === 127 ? ' ' : character
       }).join('').replace(/\s+/g, ' ').trim()
@@ -89,7 +91,7 @@ export async function transcribeAutomationClip(path: string): Promise<string> {
     if (!transcript) throw new Error('No speech was detected in this clip. Use manual metadata for silent clips.')
     return transcript
   } catch (error) {
-    if (error instanceof Error && /OpenRouter|No speech|transcript is too long|audio is too long/.test(error.message)) throw error
+    if (error instanceof Error && /Nemotron|No speech|transcript is too long|audio is too long/.test(error.message)) throw error
     throw new Error('The clip audio could not be transcribed. Check that it has a playable audio track and try again.')
   } finally { await rm(directory, { recursive: true, force: true }) }
 }

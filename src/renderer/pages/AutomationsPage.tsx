@@ -508,7 +508,7 @@ export function AutomationsPage({ onNavigate }: { onNavigate: (page: PageName) =
                   <SettingRow
                     className="mt-3"
                     title="Write captions with AI"
-                    description="When enabled, OpenRouter transcribes each clip with MAI Transcribe 2 and writes captions that publish automatically without review. AI can make mistakes; leave this off to use your own captions."
+                    description="When enabled, local Nemotron transcribes each clip and GLM writes captions through OpenRouter. They publish automatically without review. AI can make mistakes; leave this off to use your own captions."
                     control={<Switch checked={draft.metadataMode === 'ai'} onChange={(on) => setDraft({ ...draft, metadataMode: on ? 'ai' : 'manual' })} label="Write captions with AI" />}
                   />
                   {draft.metadataMode === 'ai' && aiKeysMissing && (

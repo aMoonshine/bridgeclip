@@ -176,14 +176,18 @@ export function getBridgeRunnerPath(): string {
  * Resolve the Python interpreter to use.
  *
  * Priority order:
- * 1. Explicit path from user settings (if set and not "python3")
- * 2. Bundled venv inside the app (packaged builds)
- * 3. In-repo engine venv python (engine/.venv/bin/python)
- * 4. System python3
+ * 1. Bundled venv inside the app (packaged builds)
+ * 2. In-repo Windows venv when the project-local launcher requests it
+ * 3. Explicit path from user settings (if set and not "python3")
+ * 4. In-repo engine venv python (engine/.venv/bin/python)
+ * 5. System python3
  */
 export function resolvePythonPath(enginePath: string, userPythonPath: string): string {
   if (app.isPackaged) {
     return join(process.resourcesPath, 'engine-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python3']))
+  }
+  if (process.platform === 'win32' && process.env.BRIDGECLIP_LOCAL_RUNTIME === '1') {
+    return join(enginePath, '.venv', 'Scripts', 'python.exe')
   }
   if (!app.isPackaged && userPythonPath && userPythonPath !== 'python3') {
     if (existsSync(userPythonPath)) return userPythonPath
@@ -221,13 +225,17 @@ export async function validatePython(
     await execFileAsync(
       pythonPath, ['-c', `
 import cv2
+from clip_engine.config import get_settings
 from clip_engine.bridge_contract import BRIDGE_CONTRACT_VERSION
 from clip_engine.services.ai_clipping_pipeline import ClippingJobRequest
 from clip_engine.services.layout_analyzer import LayoutAnalyzer
+from clip_engine.services.transcription_service import TranscriptionService
 if BRIDGE_CONTRACT_VERSION != ${BRIDGE_CONTRACT_VERSION}:
     raise SystemExit('Incompatible clipping engine contract')
 if not LayoutAnalyzer().available:
     raise SystemExit('Smart framing model is unavailable')
+if get_settings().transcription_backend == 'nemotron':
+    TranscriptionService()._nemotron_runtime()
 `],
       {
         cwd: enginePath,
@@ -237,7 +245,7 @@ if not LayoutAnalyzer().available:
     )
     return { ok: true, python: pythonPath, error: null }
   } catch {
-    return { ok: false, python: pythonPath, error: 'The clipping engine is missing a required dependency, smart framing model, or compatible bridge contract.' }
+    return { ok: false, python: pythonPath, error: 'The clipping engine needs its Python dependencies, smart framing model, local Nemotron runtime and model, and a compatible bridge contract.' }
   }
 }
 
@@ -407,11 +415,14 @@ export function startClipJob(
     PYTHONDONTWRITEBYTECODE: '1'
   }
 
+  const venvBinDir = dirname(pythonPath)
+  const existingPath = spawnEnv.PATH || spawnEnv.Path || '/usr/bin:/bin:/usr/sbin:/sbin'
+  spawnEnv.PATH = `${venvBinDir}${delimiter}${existingPath}`
+  if (process.platform === 'win32') delete spawnEnv.Path
   const ffmpeg = resolveBinary('ffmpeg')
   if (ffmpeg !== 'ffmpeg') {
     const binDir = dirname(ffmpeg)
-    const existingPath = spawnEnv.PATH || '/usr/bin:/bin:/usr/sbin:/sbin'
-    spawnEnv.PATH = `${binDir}${delimiter}${existingPath}`
+    spawnEnv.PATH = `${binDir}${delimiter}${spawnEnv.PATH}`
   }
 
   let child: ChildProcess

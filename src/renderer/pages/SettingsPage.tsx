@@ -62,7 +62,7 @@ export function SettingsPage(): React.JSX.Element {
   const jump = (id: SectionId): void => document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const checks: { label: string; ok: boolean | null; detail: string; section: SectionId; optional?: boolean; tone?: 'danger' }[] = [
-    { label: 'OpenRouter', ok: openrouterConfigured, detail: openrouterConfigured ? 'Key saved' : 'Needed to transcribe and pick clips', section: 'keys' },
+    { label: 'OpenRouter', ok: openrouterConfigured, detail: openrouterConfigured ? 'Key saved' : 'Needed to pick clips and write metadata', section: 'keys' },
     { label: 'Tools', ok: toolsChecked ? toolsMissing === 0 : null, detail: !toolsChecked ? (checkingTools ? 'Checking…' : 'Not checked') : toolsMissing ? `${toolsMissing} missing` : 'All installed', section: 'system', tone: 'danger' },
     { label: 'Zernio', ok: zernioConfigured, detail: zernioConfigured ? 'Posting on' : 'Optional, for posting', section: 'keys', optional: true }
   ]
@@ -104,7 +104,7 @@ export function SettingsPage(): React.JSX.Element {
                 <IconTile tone={blocking ? 'warning' : 'success'} size="lg">{blocking ? <KeyRound /> : <Check strokeWidth={3} />}</IconTile>
                 <div>
                   <h2 className="text-sm font-semibold text-ink">{blocking ? `${blocking} thing${blocking === 1 ? '' : 's'} to set up before clipping` : 'Ready to clip'}</h2>
-                  <p className="mt-0.5 text-xs text-ink-muted">{APP_NAME} runs on this computer. One OpenRouter key covers transcription and clip selection.</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">{APP_NAME} transcribes locally with Nemotron. OpenRouter runs GLM for clip selection, frame analysis and metadata.</p>
                 </div>
               </div>
             </div>
@@ -142,7 +142,7 @@ export function SettingsPage(): React.JSX.Element {
                   onRemove={() => void keys.remove('openrouterApiKey')}
                   onBlur={() => void keys.persist()}
                   placeholder="sk-or-…"
-                  description="Transcribes with MAI Transcribe 2 and picks the moments worth clipping."
+                  description="Uses GLM 5.3 Flash to choose clips and analyze frames. Transcription runs locally with Nemotron."
                   getKeyUrl={PROVIDER_LINKS.openrouter}
                 />
               </KeyRow>

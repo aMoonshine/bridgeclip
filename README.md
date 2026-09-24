@@ -23,8 +23,8 @@
 
 ## Why BridgeClip?
 
-- **No BridgeMind account or backend.** BridgeClip runs on your machine and calls OpenRouter directly with your own provider accounts and keys. Optional social account connections use your Zernio account and API key. Your videos and keys do not pass through a BridgeMind server.
-- **Pay only for what you use.** Transcription and clip planning bill your OpenRouter account at their prices. Rendering happens locally with FFmpeg. BridgeClip shows estimated API cost when the providers return usable usage data.
+- **No BridgeMind account or backend.** BridgeClip runs on your machine. This fork transcribes locally with NVIDIA Nemotron and calls OpenRouter for GLM 5.3 Flash clip planning and frame analysis. Optional social account connections use your Zernio account and API key.
+- **Pay only for what you use.** Local transcription has no API charge; GLM requests bill your OpenRouter account. Rendering happens locally with FFmpeg. BridgeClip shows estimated API cost when the provider returns usable usage data.
 - **Captions that look native.** Nine styles (Viral, Hormozi, Bold, Clean, Minimal, Fire, Glow, Neon, Karaoke), each with a live preview before you render.
 - **MIT licensed.** Fork it, change it, ship it.
 
@@ -32,9 +32,8 @@
 
 ```
  Source video ──▶ Download ──▶ Transcribe ──▶ Find moments ──▶ Render
- (file or link)    yt-dlp      OpenRouter      OpenRouter        FFmpeg
-                           MAI Transcribe 2    LLM ranks the     crop, captions,
-                               word timings    best moments      one file per clip
+ (file or link)    yt-dlp      Local Nemotron    GLM 5.3 Flash     FFmpeg
+                               word timings    via OpenRouter    crop, captions
 ```
 
 Every run gets its own folder. The **Library** shows completed clips with virality scores, timecodes and tags. **Jobs** shows what is running or queued right now (up to two clipping runs go at once; more wait in a queue) and every earlier run, including completed, failed, cancelled and interrupted jobs; completed runs open their clips, and failed runs from this session can run again. Older runs without a saved status appear as unfinished. You can optionally connect social accounts through Zernio to publish or schedule a selected clip.
@@ -47,13 +46,13 @@ On first launch, paste your OpenRouter key into the setup card:
 
 | Provider | Used for | Get a key |
 | --- | --- | --- |
-| OpenRouter | MAI Transcribe 2 transcription and choosing the moments to clip | [openrouter.ai](https://openrouter.ai/keys) |
+| OpenRouter | GLM 5.3 Flash clip selection and frame analysis | [openrouter.ai](https://openrouter.ai/keys) |
 
 Keys are encrypted with your operating system's secure storage. If secure storage is unavailable, BridgeClip asks you to configure or unlock it before saving keys.
 
 ### What leaves your computer
 
-For a link, the app downloads the source using your network connection. Audio for MAI Transcribe 2 transcription goes to OpenRouter; transcript text for clip planning goes to OpenRouter. If the video has no audio or no speech, BridgeClip samples video frames and sends those images to OpenRouter for visual-only planning. Clips made through that fallback have no speech captions. If you connect social accounts, BridgeClip sends your Zernio API key to Zernio and receives account/profile metadata; platform sign-in occurs in your browser. When you choose **Post** or **Schedule**, BridgeClip uploads that clip to Zernio's media storage and sends its caption, selected accounts and publishing options to Zernio. Zernio then publishes to those platforms. Provider accounts, charges, retention and data policies are governed by those services.
+For a link, the app downloads the source using your network connection. Audio transcription stays on your computer. Transcript text for clip planning and sampled frames for visual analysis go to OpenRouter. If the video has no audio or no speech, BridgeClip sends sampled video frames to OpenRouter for visual-only planning. Clips made through that fallback have no speech captions. If you connect social accounts, BridgeClip sends your Zernio API key to Zernio and receives account/profile metadata; platform sign-in occurs in your browser. When you choose **Post** or **Schedule**, BridgeClip uploads that clip to Zernio's media storage and sends its caption, selected accounts and publishing options to Zernio. Zernio then publishes to those platforms. Provider accounts, charges, retention and data policies are governed by those services.
 
 Downloads and intermediate media are held in a private `work/` directory under BridgeClip’s per-user application data folder. BridgeClip removes job work on completion, failure, and cancellation, and clears stale work when it next starts after a forced shutdown. A local video you selected stays where it was. Rendered clips, the transcript, plan and `job_output.json` remain in a run folder under your chosen **Output folder** (by default, `~/BridgeClip`). That JSON includes the source URL or local path and video title. Delete the run folder to remove those local outputs.
 
@@ -63,7 +62,13 @@ Only download or clip material you have permission to use. Remote sites may limi
 
 ## Develop
 
-**Prerequisites:** Node.js 22, Python 3.12, and FFmpeg with the libass-backed `ass` filter for captions. The clipping engine, model, fonts, and locked Python dependencies are included in this repository. In development, BridgeClip uses FFmpeg from `engine-bin/` when it exists, then falls back to your `PATH`. Provider keys are needed for live jobs, not tests.
+### This Windows source checkout
+
+This checkout uses `z-ai/glm-5.3-flash` through OpenRouter for clip planning and sampled-frame vision, and local `nvidia/nemotron-3.5-asr-streaming-0.6b` for audio. Start it with `start-windows.cmd` from the project folder. The launcher uses the project-local Node.js, Python virtual environment, FFmpeg, NeMo-Speech.cpp, and model in `engine-bin/`; no system installation of those tools is needed. Electron opens the desktop interface. Add an OpenRouter key in the setup card before a live clipping job.
+
+The large runtime files, model, `node_modules/`, and Python virtual environment are excluded from Git. Copying or cloning the source without these local directories requires installing them again. Keep the project at its current path after installing the virtual environment, since Windows Python launchers record an absolute path. The audio and transcript stay local during transcription; clip planning and sampled video frames are sent to OpenRouter.
+
+**For a fresh source checkout on other machines:** Node.js 22, Python 3.12, FFmpeg with the libass-backed `ass` filter, the NeMo-Speech.cpp runtime, and the official Nemotron GGUF model are required. The clipping engine, fonts, and locked Python requirements are tracked in Git; downloaded runtimes and the model are not. This Windows checkout already has those files under `engine-bin/`. Provider keys are needed for live jobs, not tests.
 
 ```bash
 git clone https://github.com/bridge-mind/bridgeclip

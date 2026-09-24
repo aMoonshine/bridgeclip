@@ -638,29 +638,27 @@ class Settings(BaseSettings):
     # ============================================================
 
     # Clip planner (OpenRouter slugs). PLANNER_FALLBACK_MODELS is a
-    # comma-separated list OpenRouter tries in order if the primary errors,
-    # is rate limited, or is down. Defaults chosen 2026-09 from the Artificial
-    # Analysis Intelligence Index (v4.3) and a live A/B on a real transcript:
-    # Opus 5.5 @ medium was fastest (~11s) and the most discriminating scorer
-    # at ~$0.07 per 20 min of video. Fallbacks are cross-vendor. Every model in
-    # the chain must accept the configured reasoning effort.
-    planner_model: str = "anthropic/claude-opus-5.5"
-    planner_fallback_models: str = "google/gemini-3.8-flash,openai/gpt-6-sol"
+    # comma-separated list OpenRouter tries if the primary fails. Keep it
+    # empty so only the requested GLM model is used.
+    planner_model: str = "z-ai/glm-5.3-flash"
+    planner_fallback_models: str = ""
     # none | minimal | low | medium | high | xhigh
     planner_reasoning_effort: str = "medium"
     # Includes reasoning tokens; 100 clips of JSON is ~15k on its own.
     planner_max_output_tokens: int = 32000
 
     # Layout vision: classifies each shot's framing and locates webcam/screen
-    # overlays from one keyframe per distinct setup. Gemini 3.8 Flash has the
-    # best native box localization per dollar (AA MMMU-Pro 0.856, ~$0.001/frame).
+    # overlays from one keyframe per distinct setup.
     layout_vision_enabled: bool = True
-    layout_vision_model: str = "google/gemini-3.8-flash"
-    layout_vision_fallback_models: str = "anthropic/claude-opus-5.5"
+    layout_vision_model: str = "z-ai/glm-5.3-flash"
+    layout_vision_fallback_models: str = ""
     layout_vision_reasoning_effort: str = "low"
 
-    # Transcription through OpenRouter (MAI Transcribe 2)
-    transcription_diarize: bool = True
+    # Local NeMo-Speech.cpp is the default. Paths may be overridden for other machines.
+    transcription_backend: Literal["nemotron", "openrouter"] = "nemotron"
+    nemo_speech_path: Optional[str] = None
+    nemotron_model_path: Optional[str] = None
+    transcription_diarize: bool = False
 
     @field_validator("planner_reasoning_effort", "layout_vision_reasoning_effort")
     @classmethod
@@ -789,14 +787,15 @@ class Settings(BaseSettings):
     def max_download_duration_seconds(self) -> int:
         return 21600  # 6 hours max (credit-guarded in API)
 
-    # Transcription uses the same OpenRouter key as planning.
+    # Local transcription is the default; the old OpenRouter backend remains optional.
     @property
     def transcription_provider(self) -> str:
-        return "openrouter"
+        return "local" if self.transcription_backend == "nemotron" else "openrouter"
 
     @property
     def transcription_model(self) -> str:
-        return "microsoft/mai-transcribe-2"
+        return ("nvidia/nemotron-3.5-asr-streaming-0.6b" if self.transcription_backend == "nemotron"
+                else "microsoft/mai-transcribe-2")
 
     # OpenRouter / LLM Configuration
     @property

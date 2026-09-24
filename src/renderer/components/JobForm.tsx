@@ -487,7 +487,7 @@ function ReviewStep({ draft, trim, onEdit }: {
           ? `${runningCount} jobs are running. This one waits in the queue and starts automatically.`
           : active.length > 0
             ? `Runs alongside ${active.length} other job${active.length === 1 ? '' : 's'}. Up to ${MAX_PARALLEL_JOBS} run at once.`
-            : 'Runs on this computer. Transcription and clip planning bill your OpenRouter account.'}
+            : 'Runs on this computer. Transcription is local; clip planning uses OpenRouter.'}
       </p>
     </div>
   )

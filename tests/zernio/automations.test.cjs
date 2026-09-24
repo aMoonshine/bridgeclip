@@ -284,24 +284,21 @@ test('AI automation transcribes the bank clip and sends distinct grounded metada
   ] }
   const mock = await createMockZernio({ apiKey: KEY, extraRoutes: [
     ...posting.routes,
-    { method: 'POST', path: '/speech-to-text', auth: false, handler: (ctx) => {
-      assert.equal(ctx.req.headers.authorization, 'Bearer test-openrouter-key')
-      assert.equal(ctx.req.headers['xi-api-key'], undefined)
-      assert.equal(ctx.body.model, 'microsoft/mai-transcribe-2')
-      assert.equal(ctx.body.input_audio.format, 'm4a')
-      assert.ok(Buffer.from(ctx.body.input_audio.data, 'base64').length > 0)
-      ctx.json(200, { text: transcript })
-    } },
-    { method: 'POST', path: '/chat/completions', auth: false, handler: (ctx) => ctx.json(200, { choices: [{ message: { content: JSON.stringify(metadata) } }] }) }
+    { method: 'POST', path: '/chat/completions', auth: false, handler: (ctx) => {
+      assert.equal(ctx.body.model, 'z-ai/glm-5.3-flash')
+      ctx.json(200, { choices: [{ message: { content: JSON.stringify(metadata) } }] })
+    } }
   ] })
   const previous = {
     zernio: process.env.BRIDGECLIP_ZERNIO_API_URL,
-    transcription: process.env.BRIDGECLIP_E2E_TRANSCRIPTION_URL,
+    nemo: process.env.BRIDGECLIP_E2E_NEMO_SCRIPT,
     openrouter: process.env.BRIDGECLIP_E2E_OPENROUTER_URL,
     path: process.env.PATH
   }
   process.env.BRIDGECLIP_ZERNIO_API_URL = mock.apiUrl
-  process.env.BRIDGECLIP_E2E_TRANSCRIPTION_URL = `${mock.url}/speech-to-text`
+  const nemoScript = path.join(dir, 'mock-nemo.cjs')
+  fs.writeFileSync(nemoScript, `if (process.argv[2] !== 'transcribe' || !process.argv[3].endsWith('.wav')) process.exit(1)\nprocess.stdout.write(${JSON.stringify(JSON.stringify({ text: transcript }))})\n`)
+  process.env.BRIDGECLIP_E2E_NEMO_SCRIPT = nemoScript
   process.env.BRIDGECLIP_E2E_OPENROUTER_URL = `${mock.url}/chat/completions`
   process.env.PATH = `${previous.path}${path.delimiter}${path.join(ROOT, 'engine-bin')}`
   try {
@@ -354,7 +351,7 @@ test('AI automation transcribes the bank clip and sends distinct grounded metada
   } finally {
     for (const [name, value] of Object.entries({
       BRIDGECLIP_ZERNIO_API_URL: previous.zernio,
-      BRIDGECLIP_E2E_TRANSCRIPTION_URL: previous.transcription,
+      BRIDGECLIP_E2E_NEMO_SCRIPT: previous.nemo,
       BRIDGECLIP_E2E_OPENROUTER_URL: previous.openrouter,
       PATH: previous.path
     })) {

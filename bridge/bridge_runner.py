@@ -36,6 +36,12 @@ DURATION_RANGE_IDS = ("xshort", "short", "medium", "long", "xlong", "extended", 
 # request URLs, proxy credentials and local paths, so only these fixed strings
 # reach the UI. First match wins.
 FAILURES = (
+    (("local transcription model or runtime is unavailable",),
+     "The local Nemotron model or runtime is missing.",
+     "Check the project engine-bin folder and run System check, then retry."),
+    (("local transcription failed",),
+     "Local Nemotron could not transcribe this audio.",
+     "Check the local model and runtime, then retry with a short WAV file."),
     (("not enough disk space to save clips",),
      "There is not enough free disk space to finish this video.",
      "Free space on your startup disk and the output drive, then retry. Source videos can use several GB while clipping."),

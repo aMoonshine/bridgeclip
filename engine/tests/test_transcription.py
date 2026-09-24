@@ -1,4 +1,9 @@
-"""Offline tests for BridgeClip's OpenRouter transcription parsing and vocabulary hints."""
+"""Offline tests for BridgeClip's local and OpenRouter transcription paths."""
+
+import asyncio
+import json
+import subprocess
+from types import SimpleNamespace
 
 import pytest
 
@@ -80,3 +85,37 @@ class TestNormalizeKeyterms:
 
     def test_caps_count(self):
         assert len(normalize_keyterms([f"term{i}" for i in range(1500)])) == 200
+
+
+def test_nemotron_parses_word_timing_language_and_zero_api_cost():
+    service = TranscriptionService.__new__(TranscriptionService)
+    result = service._parse_nemotron_response({
+        "text": "Hello world.",
+        "languages": ["en-US"],
+        "words": [word("Hello", 0.1, 0.4, 1), word("world.", 0.5, 1.0, 1)],
+    }, 1.5)
+    assert result.language == "en-US"
+    assert result.provider == "local"
+    assert result.segments[0].speaker_label == "S1"
+    assert [w.start_time_ms for w in result.segments[0].words] == [100, 500]
+    assert result.api_costs.estimated_cost_usd == 0
+
+
+def test_nemotron_command_uses_local_runtime_and_model(monkeypatch):
+    service = TranscriptionService.__new__(TranscriptionService)
+    service.settings = SimpleNamespace()
+    monkeypatch.setattr(service, "_nemotron_runtime", lambda: ("local-nemo", "local-model.gguf"))
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "text": "Hello.", "words": [word("Hello.", 0.0, 0.5)], "languages": ["en-US"]
+        }).encode("utf-8"), b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    response = asyncio.run(service._request_nemotron_transcript("clip.wav", "en", ["BridgeClip"]))
+    assert response["text"] == "Hello."
+    assert seen["command"] == ["local-nemo", "transcribe", "clip.wav", "--model",
+                               "local-model.gguf", "--language", "en-US", "--format", "json",
+                               "--speech-context", "BridgeClip"]

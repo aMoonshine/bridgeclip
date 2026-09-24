@@ -82,6 +82,8 @@ class PlanningApiCosts:
 # is what we record. This per-token table is only used if that field is
 # missing, so it only needs to be roughly right.
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    # Conservative fallback for GLM when OpenRouter omits the billed usage.cost.
+    "z-ai/glm-5.3-flash": {"input": 0.15e-6, "output": 0.50e-6},
     "anthropic/claude-opus-5.5": {"input": 4.00e-6, "output": 20.0e-6},
     "google/gemini-3.8-flash": {"input": 0.75e-6, "output": 3.75e-6},
     "openai/gpt-6-sol": {"input": 2.00e-6, "output": 10.0e-6},

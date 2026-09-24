@@ -3,6 +3,7 @@ import importlib.util
 import io
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -12,9 +13,17 @@ from contextlib import redirect_stdout
 from unittest.mock import patch
 
 import bridge_runner as bridge
+import network_guard
 
 
 class BridgeTests(unittest.TestCase):
+    def tearDown(self):
+        # The worker normally exits after one job. Restore process-wide socket
+        # hooks here so Windows asyncio can create its loopback socketpair.
+        socket.socket.connect = network_guard._original_connect
+        socket.socket.connect_ex = network_guard._original_connect_ex
+        network_guard._installed = False
+
     def config(self, **overrides):
         return {"contract_version": 1, "layout_vision_enabled": True, "job_id": "job-123", "video_url": "https://example.com/video", **overrides}
 
