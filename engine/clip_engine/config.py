@@ -6,6 +6,7 @@ for consistency and simplicity.
 """
 
 import os
+import re
 from functools import lru_cache
 from typing import List, Literal, Optional
 
@@ -13,6 +14,16 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
+
+# On-device speech recognition through NeMo-Speech.cpp. The model is distributed
+# separately and is never downloaded by the app at runtime.
+NEMOTRON_MODEL = "nvidia/nemotron-3.5-asr-streaming-0.6b"
+NEMOTRON_FILENAME = "nemotron-3.5-asr-streaming-0.6b.q8_0.gguf"
+
+# Device names NeMo-Speech.cpp accepts for --device, plus an indexed form so a
+# machine with several GPUs can pick one.
+TRANSCRIPTION_DEVICES = ("auto", "cpu", "cuda", "vulkan", "metal", "gpu")
+_DEVICE_INDEX = re.compile(r"^(cuda|vulkan|metal|gpu):\d{1,2}$")
 
 
 # ============================================================
@@ -666,6 +677,16 @@ class Settings(BaseSettings):
     planner_input_price: Optional[float] = None
     planner_output_price: Optional[float] = None
     transcription_diarize: bool = True
+    # "openrouter" is the default and the only behaviour that existed before the
+    # local runtime. "nemotron" opts into on-device transcription, where the
+    # audio and the transcript never leave the computer.
+    transcription_backend: Literal["openrouter", "nemotron"] = "openrouter"
+    # Device passed to NeMo-Speech.cpp. "auto" lets the runtime pick the best
+    # compiled backend, which is the GPU when a CUDA or Vulkan build is present.
+    transcription_device: str = "auto"
+    # Overrides for machines that stage the runtime or the model elsewhere.
+    nemo_speech_path: Optional[str] = None
+    nemotron_model_path: Optional[str] = None
 
     @field_validator("planner_reasoning_effort", "layout_vision_reasoning_effort")
     @classmethod
@@ -676,6 +697,21 @@ class Settings(BaseSettings):
                 f"{info.field_name.upper()} must be one of {', '.join(REASONING_EFFORTS)}"
             )
         return effort
+
+    @field_validator("transcription_device")
+    @classmethod
+    def _validate_transcription_device(cls, value: str) -> str:
+        """Accept only a device NeMo-Speech.cpp documents.
+
+        The value reaches a subprocess argv, so anything a job request or the
+        environment supplies has to be rejected before it becomes an argument.
+        """
+        device = (value or "auto").strip().lower()
+        if device not in TRANSCRIPTION_DEVICES and not _DEVICE_INDEX.match(device):
+            raise ValueError(
+                "TRANSCRIPTION_DEVICE must be auto, cpu, or a GPU index such as vulkan:0"
+            )
+        return device
 
     @staticmethod
     def _split_models(models: str, primary: str) -> List[str]:
@@ -799,10 +835,12 @@ class Settings(BaseSettings):
     # Transcription uses the same OpenRouter key as planning.
     @property
     def transcription_provider(self) -> str:
-        return "openrouter"
+        return "local" if self.transcription_backend == "nemotron" else "openrouter"
 
     @property
     def transcription_model(self) -> str:
+        if self.transcription_backend == "nemotron":
+            return NEMOTRON_MODEL
         if self.clipping_mode == "advanced":
             if not self.advanced_transcription_model:
                 raise ValueError("Choose a transcription model in Advanced mode")
