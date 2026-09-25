@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
-  <a href="https://github.com/bridge-mind/bridgeclip/releases"><img src="https://img.shields.io/github/v/release/bridge-mind/bridgeclip?label=download" alt="Latest release" /></a>
+  <a href="https://github.com/bridge-mind/bridgeclip/releases"><img src="https://img.shields.io/badge/GitHub-v/release/bridge-mind/bridgeclip?label=download" alt="Latest release" /></a>
   <a href="https://www.bridgemind.ai/discord"><img src="https://img.shields.io/badge/Discord-builders-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
@@ -23,8 +23,8 @@
 
 ## Why BridgeClip?
 
-- **No BridgeMind account or backend.** BridgeClip runs on your machine. This fork transcribes locally with NVIDIA Nemotron and calls OpenRouter for GLM 5.3 Flash clip planning and frame analysis. Optional social account connections use your Zernio account and API key.
-- **Pay only for what you use.** Local transcription has no API charge; GLM requests bill your OpenRouter account. Rendering happens locally with FFmpeg. BridgeClip shows estimated API cost when the provider returns usable usage data.
+- **Runs on your computer.** The current source checkout transcribes locally with NVIDIA Nemotron and calls OpenRouter for GLM clip planning, optional frame analysis, and AI metadata. The local NeMo bundle is currently CPU-only; mandatory GPU support is not complete.
+- **Explicit provider costs.** Local CPU transcription has no API charge. Current OpenRouter requests bill the user's OpenRouter account. Codex/ChatGPT-plan access is planned, not implemented, and is not covered by an OpenAI API key.
 - **Captions that look native.** Nine styles (Viral, Hormozi, Bold, Clean, Minimal, Fire, Glow, Neon, Karaoke), each with a live preview before you render.
 - **MIT licensed.** Fork it, change it, ship it.
 
@@ -33,30 +33,36 @@
 ```
  Source video ──▶ Download ──▶ Transcribe ──▶ Find moments ──▶ Render
  (file or link)    yt-dlp      Local Nemotron    GLM 5.3 Flash     FFmpeg
-                               word timings    via OpenRouter    crop, captions
+                               (CPU-only now)    via OpenRouter    crop, captions
 ```
 
-Every run gets its own folder. The **Library** shows completed clips with virality scores, timecodes and tags. **Jobs** shows what is running or queued right now (up to two clipping runs go at once; more wait in a queue) and every earlier run, including completed, failed, cancelled and interrupted jobs; completed runs open their clips, and failed runs from this session can run again. Older runs without a saved status appear as unfinished. You can optionally connect social accounts through Zernio to publish or schedule a selected clip.
+Every run gets its own folder. The **Library** shows completed clips with virality scores, timecodes and tags. **Jobs** shows what is running or queued right now and earlier runs. Completed runs open their clips, and some failed runs can run again. You can optionally connect social accounts through Zernio to publish or schedule a selected clip.
 
-## Download
+## Download and release status
 
-Signed macOS builds for Apple silicon and Intel will appear on [Releases](https://github.com/bridge-mind/bridgeclip/releases) after release testing. Those builds bundle Python, FFmpeg and yt-dlp. Until then, use the development setup below. Windows source builds are experimental and are not part of the supported release workflow.
+No macOS or Windows release is approved by this documentation baseline. macOS packaging configuration exists but still requires release qualification. The canonical Windows source checkout is verified for development startup; Windows installer, updater, GPU-runtime, and portable-state readiness are not complete. Use the development setup below until the release gates pass.
 
-On first launch, paste your OpenRouter key into the setup card:
+The current desktop flow requires an OpenRouter key because clip planning is hardcoded to OpenRouter GLM. Codex login and provider/model selectors are planned and are not current UI features.
 
-| Provider | Used for | Get a key |
+| Current provider | Used for | Get a key |
 | --- | --- | --- |
-| OpenRouter | GLM 5.3 Flash clip selection and frame analysis | [openrouter.ai](https://openrouter.ai/keys) |
+| OpenRouter | GLM clip selection, optional frame analysis, and AI metadata | [openrouter.ai](https://openrouter.ai/keys) |
 
-Keys are encrypted with your operating system's secure storage. If secure storage is unavailable, BridgeClip asks you to configure or unlock it before saving keys.
+OpenRouter and Zernio keys are encrypted with Electron secure storage. If secure storage is unavailable, BridgeClip asks you to configure or unlock it before saving keys. ElevenLabs is not a current provider.
 
 ### What leaves your computer
 
-For a link, the app downloads the source using your network connection. Audio transcription with local Nemotron stays on your computer. Transcript text for clip planning and sampled frames for visual analysis go to OpenRouter using GLM 5.3 Flash. If the video has no audio or no speech, BridgeClip sends sampled video frames to OpenRouter for visual-only planning. Clips made through that fallback have no speech captions. Economy skips optional AI layout checks. If you connect social accounts, BridgeClip sends your Zernio API key to Zernio and receives account/profile metadata; platform sign-in occurs in your browser. When you choose **Post** or **Schedule**, BridgeClip uploads that clip to Zernio's media storage and sends its caption, selected accounts and publishing options to Zernio. Zernio then publishes to those platforms. Provider accounts, charges, retention and data policies are governed by those services.
+For a link, the app downloads the source using your network connection. With the current default backend, audio transcription and the resulting transcript stay on the computer. Transcript text for clip planning and sampled frames for optional visual analysis go to OpenRouter. If speech is unavailable, sampled frames can be used for visual-only OpenRouter planning, but those clips have no speech captions.
 
-Downloads and intermediate media are held in a private `work/` directory under BridgeClip’s per-user application data folder. BridgeClip removes job work on completion, failure, and cancellation, and clears stale work when it next starts after a forced shutdown. A local video you selected stays where it was. Rendered clips, the transcript, plan and `job_output.json` remain in a run folder under your chosen **Output folder** (by default, `~/BridgeClip`). That JSON includes the source URL or local path and video title. Delete the run folder to remove those local outputs.
+The engine retains an optional `TRANSCRIPTION_BACKEND=openrouter` implementation. It is not exposed in the current provider UI; when explicitly selected outside that UI, it sends audio to OpenRouter and can incur charges. It is not a silent fallback from local ASR.
 
-Settings, the last synced list of connected accounts (platforms, handles and Zernio IDs), local posting history, and upload retry records live in Electron's per-user application data folder. Posting history can include clip paths and titles, account handles, targets, status and links; retry records can include a clip path and an uploaded media URL. Changing or removing the Zernio key switches to a separate local post history and quarantines the old account and upload retry caches. Returning to the same key restores its saved post history; a newly rotated key has separate history. Quarantined copies remain on disk until a later cleanup after 30 days; to erase them immediately, quit the app and delete the `zernio-*.quarantine-*` files from its application data folder. Key changes do not delete media or posts already held by Zernio or a social platform. Diagnostic logs live in the per-user logs folder. Remove provider keys in Settings to clear their encrypted saved copies, and review logs before sharing them in an issue.
+If you connect social accounts, BridgeClip sends your Zernio API key to Zernio and receives account/profile metadata; platform sign-in occurs in your browser. When you choose **Post** or **Schedule**, BridgeClip uploads that clip to Zernio's media storage and sends its caption, selected accounts and publishing options to Zernio. Provider accounts, charges, retention and data policies are governed by those services.
+
+### Current local state
+
+Downloads and intermediate media are held in a private `work/` directory under Electron's per-user application-data folder. Settings, logs, thumbnails, automation state, account caches, and posting history also remain there. Rendered clips, transcripts, plans, and `job_output.json` remain in the selected output folder.
+
+A versioned project-local `data\` root, portable drafts, recent projects, crash recovery, and non-destructive history clearing are planned but not implemented. The future portable tree must not contain API keys, raw ChatGPT/Codex tokens, cookies, `auth.json`, or exported Keyring material.
 
 Only download or clip material you have permission to use. Remote sites may limit downloads or change their access rules.
 
@@ -64,20 +70,22 @@ Only download or clip material you have permission to use. Remote sites may limi
 
 Paste a public, completed Twitch video link such as `https://www.twitch.tv/videos/1234567890` into Create, then choose your clip settings and generate. BridgeClip downloads the saved video and uses the same transcription, AI moment selection and rendering flow as other sources. Links on `twitch.tv`, `www.twitch.tv`, `m.twitch.tv` and `go.twitch.tv` are accepted and normalized to the canonical video URL.
 
-Live channels, Twitch clips, collections, subscriber-only videos and deleted or expired VODs are not supported. No Twitch login or cookies are used. The original source must be at most six hours and 20 GB. BridgeClip downloads the full source before applying the optional start and end times; a link's timestamp or tracking parameters are ignored. For a longer source, trim a downloaded file before adding it. Downloads also stop after four hours or when less than 1 GB of free space would remain.
+Live channels, Twitch clips, collections, subscriber-only videos and deleted or expired VODs are not supported. No Twitch login or cookies are used. The original source must be at most six hours and 20 GB. BridgeClip downloads the full source before applying the optional start and end times. Downloads also stop after four hours or when less than 1 GB of free space would remain.
 
 ## Develop
 
-### This Windows source checkout
+### Canonical Windows source checkout
 
-This checkout uses `z-ai/glm-5.3-flash` through OpenRouter for clip planning and sampled-frame vision, and local `nvidia/nemotron-3.5-asr-streaming-0.6b` for audio. Start it with `start-windows.cmd` from the project folder. The launcher uses the project-local Node.js, Python virtual environment, FFmpeg, NeMo-Speech.cpp, and model in `engine-bin/`; no system installation of those tools is needed. Electron opens the desktop interface. Add an OpenRouter key in the setup card before a live clipping job.
+The canonical working checkout is `Y:\ProjectsAI\bridgeclip`. There is no second rollback checkout: the former `D:\!!!\Documents\ChatGPT\LinkedIn\bridgeclip` was removed, so recovery goes through `origin` = `aMoonshine/bridgeclip`. Start the canonical checkout with `start-windows.cmd`.
 
-The large runtime files, model, `node_modules/`, and Python virtual environment are excluded from Git. Copying or cloning the source without these local directories requires installing them again. Keep the project at its current path after installing the virtual environment, since Windows Python launchers record an absolute path. The audio and transcript stay local during transcription; clip planning and sampled video frames are sent to OpenRouter.
+The launcher uses project-local Node.js, Python, FFmpeg/ffprobe, yt-dlp, NeMo-Speech.cpp, and the existing model under `engine-bin\`. The current engine defaults to local Nemotron transcription, but the local NeMo bundle reports no compiled CUDA/Vulkan backend. Clip planning and optional layout vision remain hardcoded to `z-ai/glm-5.3-flash` through OpenRouter. There is no current Codex adapter, provider/model picker, or explicit GPU-device control.
 
-**For a fresh source checkout on other machines:** Node.js 22, Python 3.12, FFmpeg with the libass-backed `ass` filter, the NeMo-Speech.cpp runtime, and the official Nemotron GGUF model are required. The clipping engine, fonts, and locked Python requirements are tracked in Git; downloaded runtimes and the model are not. This Windows checkout already has those files under `engine-bin/`. Provider keys are needed for live jobs, not tests.
+The large runtime files, model, `node_modules\`, and Python virtual environment are excluded from Git. Recreate the venv at the canonical path. See [Portable Windows](docs/PORTABLE_WINDOWS.md) for exact recreation, system-check, and rollback commands.
+
+**For a fresh source checkout on another machine:** Node.js 22, Python 3.12, FFmpeg with the libass-backed `ass` filter, NeMo-Speech.cpp, and the Nemotron GGUF model are required. The current source does not make an incomplete local bundle GPU-complete. GPU acceptance requires a separately verified CUDA/Vulkan runtime and real local fixture.
 
 ```bash
-git clone https://github.com/bridge-mind/bridgeclip
+git clone https://github.com/aMoonshine/bridgeclip
 cd bridgeclip
 python3.12 -m venv engine/.venv
 engine/.venv/bin/pip install --require-hashes -r engine/requirements.lock
@@ -85,18 +93,18 @@ npm ci
 npm run dev
 ```
 
-BridgeClip finds its in-repo engine and virtual environment automatically. **Settings → System check** shows the Python, yt-dlp, FFmpeg, and engine checks; set **Python path** in development if you use another interpreter.
+BridgeClip finds its in-repo engine and virtual environment automatically. **Settings → System check** shows Python, yt-dlp, FFmpeg, and engine checks. Use the project-local launcher for the canonical Windows checkout.
 
-On Linux, use system FFmpeg with the libass-backed `ass` filter (`ffmpeg -hide_banner -filters | grep -E '[[:space:]]ass[[:space:]]'`) and Python 3.12. Arch: `sudo pacman -S ffmpeg`. Skip `scripts/prepare-resources.sh` during development; it prepares macOS release resources. Linux development and tests are supported, but a self-contained Linux package is not yet available.
+On Linux, use system FFmpeg with the libass-backed `ass` filter and Python 3.12. Linux development and tests are supported, but a self-contained Linux package is not available.
 
-The release workflow packages the in-repo engine and media tools into signed macOS builds. For local packaging, first run `bash scripts/prepare-resources.sh arm64` (or `x64` on Intel), then follow [the release guide](docs/RELEASING.md). Signing credentials are still required for a distributable build.
+Do not publish a release from the current checkout. Resource staging, GPU runtime, manifest coverage, portable data, packaging, and final offline QA remain release blockers. See [Project status](docs/PROJECT_STATUS.md) and [Releasing](docs/RELEASING.md).
 
 ### First run and troubleshooting
 
 1. Add your OpenRouter key in the setup card. A saved key is never shown again; paste a new one to replace it or choose **Remove key** in Settings.
-2. Run **Settings → System check**. In development, set the Python path if your local virtual environment is not detected.
-3. Choose a local video with the file picker or paste a public video link, select clip lengths, framing, and caption style, then start. Smart framing automatically follows faces and arranges screen shares with facecams shot by shot. The optional AI vision check improves ambiguous layouts and can add OpenRouter cost. Dropping a local file opens the picker so you can grant access. Completed runs appear in Library and in your output folder.
-4. If a link fails, check it in a signed-out browser or download it yourself and select the local file. If a run fails, use the in-app error and System check first; logs intentionally omit raw provider responses and private source details.
+2. Run **Settings → System check**. The current NeMo doctor result is CPU-only even when this check succeeds.
+3. Choose a local video or public video link, select clip settings, and start the job. Optional AI vision can add OpenRouter cost.
+4. If a run fails, use the in-app error and System check first. Logs intentionally omit raw provider responses and private source details.
 
 | Script | What it does |
 | --- | --- |
@@ -106,11 +114,12 @@ The release workflow packages the in-repo engine and media tools into signed mac
 | `npm run build` | Production build into `out/` |
 | `npm run test:bridge` | Run Python bridge regression tests |
 | `engine/.venv/bin/python -m pytest -q engine/tests` | Run the clipping engine tests after installing pytest |
-| `npm run test:release` | Check macOS updater metadata merging |
+| `npm run test:release` | Check release metadata and staging regressions |
 | `npm run test:renderer` | Check renderer state and parsing regressions |
 | `npm run test:main` | Check desktop security and pipeline regressions |
 | `npm run test:zernio` | Check social account, upload and posting flows against local mocks |
-| `npm run dist:mac` | Package the current Mac architecture into `dist/` after preparing matching resources (signing needs a Developer ID) |
+| `npm run dist:mac` | Package the current Mac architecture; signing credentials are required |
+| `npm run dist:win` | Create a Windows package; not release-approved at this baseline |
 | `npm run icons` | Regenerate the app icon from `scripts/icon/` (macOS) |
 
 ### Project layout
@@ -122,12 +131,24 @@ src/renderer/    React UI (Create, Library, Jobs, Accounts, Automations, Setting
 src/shared/      Product constants shared by main and renderer
 bridge/          Python worker protocol and network guard
 engine/          BridgeClip clipping engine, assets, locked Python dependencies, and tests
+engine-bin/      Ignored project-local Node, Python, FFmpeg, NeMo, and model files
 scripts/icon/    Icon and logo generators
 ```
 
-The visual system (tokens, components and rules) is documented in [DESIGN.md](DESIGN.md).
-The desktop trust boundaries and bridge protocol are described in [Architecture](docs/ARCHITECTURE.md).
-The [open-source readiness checklist](docs/OPEN_SOURCE_READINESS.md) tracks the remaining release gates and maintenance priorities.
+## Documentation
+
+| Document | Purpose |
+| --- | --- |
+| [Project status](docs/PROJECT_STATUS.md) | Verified Todos, active work, owner decisions, and remaining gates |
+| [Architecture](docs/ARCHITECTURE.md) | Current desktop/engine data flow and target boundaries |
+| [Transcription](docs/transcription.md) | Local CPU status, optional remote path, and mandatory GPU acceptance |
+| [Portable Windows](docs/PORTABLE_WINDOWS.md) | Canonical paths, venv recreation, system checks, and rollback |
+| [Providers](docs/PROVIDERS.md) | Local ASR, OpenRouter, and planned Codex/ChatGPT-plan boundaries |
+| [Upstream sync](docs/UPSTREAM_SYNC.md) | Feature/sync branch and origin/upstream workflow |
+| [Automation metadata](docs/automation-metadata.md) | Current local-ASR-to-OpenRouter metadata flow and platform guidance |
+| [Releasing](docs/RELEASING.md) | Blocked release gates and publication order |
+| [Open-source readiness](docs/OPEN_SOURCE_READINESS.md) | Public snapshot, manifest, packaging, and maintenance gates |
+| [Security policy](SECURITY.md) | Current reporting and secret-handling policy |
 
 ## Contributing
 

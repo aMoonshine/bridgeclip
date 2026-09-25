@@ -1,8 +1,18 @@
 # Automation transcription and platform metadata
 
-Checked against official documentation on 24 September 2026. Platform limits can change; the authoritative checks remain Zernio and the destination platform at publish time.
+## Status
 
-An AI-enabled automation extracts speech from its next queued bank clip, transcribes it with MAI Transcribe 2 through OpenRouter, then asks OpenRouter for grounded, platform-specific copy. The request uses Zernio's per-target `customContent` so a short X post does not become a truncated copy of a YouTube description. YouTube gets a separate title, description, tags and category. An eligible vertical Facebook clip becomes a Reel with a separate title; other Facebook clips become feed videos. Threads gets a native topic tag only when the tag occurs in the transcript. The transcript and generated copy are stored with the bank clip for review and reuse. If transcription, generation, validation or posting preflight fails, the queued clip is not consumed. Existing automations migrate to manual metadata; new automations use AI metadata by default and need an OpenRouter key to be activated.
+- **Current verified state:** automation audio is transcribed locally with Nemotron; only the resulting transcript is sent to OpenRouter for GLM metadata generation. The current local bundle is CPU-only.
+- **Owner decision:** AI metadata is optional, provider/model use must be explicit, and no autonomous paid call or model download is allowed.
+- **Planned / not yet implemented:** selectable providers/models, GPU enforcement, portable automation state, and portable draft/recovery behavior.
+
+Platform guidance was checked against official documentation on 24 September 2026. Platform limits can change; the authoritative checks remain Zernio and the destination platform at publish time. See [Project status](PROJECT_STATUS.md), [Transcription](transcription.md), and [Providers](PROVIDERS.md).
+
+## Current flow
+
+An AI-enabled automation extracts speech from its next queued bank clip and transcribes it with the project-local Nemotron runtime. It then asks OpenRouter for grounded, platform-specific copy. The audio remains local; the transcript and OpenRouter request can incur account cost. The request uses Zernio's per-target `customContent` so a short X post does not become a truncated copy of a YouTube description. YouTube gets a separate title, description, tags and category. An eligible vertical Facebook clip becomes a Reel with a separate title; other Facebook clips become feed videos. Threads gets a native topic tag only when the tag occurs in the transcript. The transcript and generated copy are stored with the bank clip for review and reuse.
+
+If local transcription, OpenRouter generation, validation or posting preflight fails, the queued clip is not consumed. Existing and newly created automations default to manual metadata. AI metadata is an explicit opt-in and requires an OpenRouter key. Turning it on permits generated text to publish without a human review step.
 
 | Platform | Supported metadata and guidance |
 | --- | --- |

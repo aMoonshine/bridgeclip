@@ -9,6 +9,9 @@ dist/
 *.p8
 *.p12
 *.key
+*.conf
+*.cfg
+data/
 *.log
 .DS_Store
 engine-venv/

@@ -1,6 +1,6 @@
 # Security follow-up — 24 September 2026
 
-Historical snapshot: this follow-up predates the move of the clipping engine into `engine/` in the BridgeClip repository. References below to a separate legacy engine checkout and release pin describe the earlier design; see [Architecture](ARCHITECTURE.md) and [Releasing](RELEASING.md) for the current design.
+> **Historical security record.** This follow-up predates the move of the clipping engine into `engine/`, the canonical SSD relocation, and current provider/GPU/portable-state work. References below to a separate legacy engine checkout, release pin, provider behavior, or readiness describe only the reviewed snapshot and are not current policy or completion evidence. The report body is preserved without rewriting historical findings. For current state and gates, see [Project status](PROJECT_STATUS.md), [Security policy](../SECURITY.md), [Providers](PROVIDERS.md), and [Releasing](RELEASING.md).
 
 This follows [the original review](SECURITY_REVIEW_2026-09-24.md). The five original findings remain fixed. Original review statements about actions not performed describe that first pass only.
 

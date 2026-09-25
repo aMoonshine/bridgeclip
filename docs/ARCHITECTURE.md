@@ -1,19 +1,51 @@
 # Architecture and data flow
 
+This document describes the **current verified state** unless a section is explicitly labeled **Owner decision** or **Planned / not yet implemented**. See [Project status](PROJECT_STATUS.md) for the evidence ledger.
+
+## Current verified state
+
 ```mermaid
 flowchart LR
-  UI[React renderer] -->|typed IPC| Preload[Isolated preload]
+  UI[React renderer] -->|typed IPC| Preload[Sandboxed preload]
   Preload --> Main[Electron main process]
-  Main -->|JSON on stdin| Bridge[Python bridge]
+  Main -->|JSON on stdin/stdout| Bridge[Python bridge]
   Bridge --> Engine[In-repo clipping engine]
-  Engine -->|audio for MAI Transcribe 2| OpenRouter
-  Engine -->|transcript or sampled frames| OpenRouter
-  Engine -->|clips, transcript, plan| Library[Local output folder]
-  Main -->|optional account, media and post API| Zernio[Zernio]
+  Engine -->|default ASR; current CPU bundle| Nemo[Local NeMo-Speech]
+  Engine -.->|optional environment-selected ASR| OpenRouter[OpenRouter]
+  Engine -->|hardcoded GLM planning and optional layout vision| OpenRouter
+  Main -->|automation metadata: local transcript, then copy generation| Nemo
+  Main -->|automation copy generation| OpenRouter
+  Main -->|optional account, media, and post API| Zernio[Zernio]
+  Engine -->|clips, transcript, plan, result JSON| Output[Selected output folder]
+  Main --> Settings[Electron per-user userData]
 ```
 
-The renderer is sandboxed and cannot read saved provider keys. Main owns secure storage, validates IPC callers and job options, grants local media access through the native file picker, starts one worker job at a time, and checks the worker's JSON-line messages. A dropped local file opens that picker; its renderer-supplied path alone does not grant access. The bridge runs BridgeClip’s bundled Python engine in local mode and reserves stdout for progress and results. FFmpeg renders locally. A link is downloaded using the user's network connection into a temporary job workspace, which the engine removes after normal completion or failure; Electron also removes job work after the worker exits and sweeps stale work at startup. The original local source stays in place; finished clips, transcript, plan and result JSON persist in the output folder. Provider requests go directly to OpenRouter; when speech is unavailable, sampled frames replace transcript text for OpenRouter planning. Optional social-account management calls Zernio from main using the user's own Zernio key; browser sign-in returns through a one-time loopback callback. Posting also stays in main: it validates the selected clip and connected accounts, obtains a presigned media URL, uploads the clip, and sends the caption, targets and schedule to Zernio. Local post status, clip paths and titles, account handles, targets, links, and upload retry details are saved in the app data folder. On a Zernio key change, records from the previous workspace are hidden and quarantined on disk; a later cleanup can remove quarantine files after 30 days.
+The renderer is sandboxed, context-isolated, and has no Node integration. The preload exposes a narrow typed API. Main validates IPC input, owns process launch and cancellation, and authorizes local media. The Python bridge runs the in-repo engine and treats saved run files and provider responses as untrusted input.
 
-Saved run files are treated as untrusted input when loaded into the Library. The app shows sanitized diagnostics rather than raw provider or subprocess output. The Python bridge blocks private TCP destinations at connection time, including after URL redirects and DNS changes. Native or separate executable network clients need independent review before being added to the local pipeline.
+Current transcription uses `nvidia/nemotron-3.5-asr-streaming-0.6b` by default. The bundled NeMo runtime is present but CPU-only; no device is selected by the current application path, and GPU completion is not claimed. The engine also retains an OpenRouter audio-transcription implementation selected by `TRANSCRIPTION_BACKEND=openrouter`. It is not exposed as a provider choice in the current UI, sends audio to OpenRouter when selected, and can incur charges.
 
-The planned supported release builds are macOS Apple silicon and Intel. Windows source builds are experimental. The Python engine and its assets live in `engine/` in this repository; release builds package that source directly. No separate engine repository is needed.
+Current planner and optional layout-vision behavior are hardcoded to `z-ai/glm-5.3-flash` through OpenRouter. The bridge requires an OpenRouter key. Codex, selectable providers/models, and model discovery are absent. ElevenLabs is not a current provider.
+
+OpenRouter and Zernio keys are currently encrypted with Electron `safeStorage` in the per-user `settings.json`; only configured-state booleans reach the renderer. The key is passed to the clipping process for current OpenRouter calls. No Codex login or Windows-Keyring-backed Codex session exists yet.
+
+Current local state remains under Electron `app.getPath('userData')`, including settings, logs, thumbnails, work directories, automation data, account caches, and posting history. Rendered media and run artifacts remain in the selected output folder. This is not a portable project-local data layout.
+
+The canonical source launcher resolves project-local Python, Node/Electron, FFmpeg/ffprobe, yt-dlp, NeMo-Speech, and the existing model. Packaging configuration contains macOS and Windows targets, but GPU-complete resources, portable state, deterministic staging, and release qualification are not complete.
+
+## Owner decisions
+
+- Introduce one versioned contract for `local-nemo`, `openrouter`, and `codex`, with validated model IDs and ASR/LLM roles.
+- Keep local ASR separate from remote LLM planning. CPU execution remains diagnostic; CUDA or Vulkan GPU evidence is mandatory.
+- Run the official Codex app server from main. The renderer receives safe status and model metadata only.
+- Keep reusable credentials in main-process/Windows Keyring ownership. Never write raw Codex tokens, cookies, or `auth.json` to renderer state, logs, argv, Git, fixtures, or portable data.
+- Move non-secret application state to a versioned project-local `data\` root selected before stores initialize.
+
+## Planned / not yet implemented
+
+- Typed provider/model/device selection and explicit, non-generative discovery.
+- Official Codex/ChatGPT-plan login, account status, logout, and model inventory.
+- GPU NeMo execution with a real local fixture and word timestamps.
+- Project-local portable data, migration, drafts, recent projects, crash recovery, and non-destructive history clearing.
+- Updated resource staging, packaging validation, public manifest, and third-party notices.
+
+Operational details are in [Portable Windows](PORTABLE_WINDOWS.md), [Providers](PROVIDERS.md), and [Transcription](transcription.md).
