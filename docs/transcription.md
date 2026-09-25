@@ -2,6 +2,49 @@
 
 BridgeClip has three per-run clipping modes. **Quality** (the default, including older requests) uses `anthropic/claude-opus-5.5` for planning and prefers `microsoft/mai-transcribe-2` for transcription. **Economy** uses `z-ai/glm-5.3-flash` and prefers `openai/whisper-large-v3-turbo`, with paid layout vision disabled and no higher-cost planner fallback. **Advanced** lets users search OpenRouter for a transcription model and a clip planning model. Automation metadata still uses MAI Transcribe 2. One OpenRouter key covers all modes.
 
+## On-device transcription with a GPU
+
+Transcription can also run entirely on this computer, with no API call and no cost. **Settings → Transcription → Runs on** switches between `OpenRouter` (the default) and `This computer`. Audio and the resulting transcript then never leave the machine. Clip planning is unaffected and still uses OpenRouter, so a key is required either way.
+
+On-device transcription uses NVIDIA's [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) runtime and the `nvidia/nemotron-3.5-asr-streaming-0.6b` model, converted to GGUF. BridgeClip never downloads either one for you.
+
+### Install the runtime
+
+The runtime is installed with NVIDIA's own installer, which verifies the release archive against its published SHA-256 and refuses a mismatch:
+
+```bash
+# Linux and macOS
+curl -fsSL https://github.com/NVIDIA/NeMo-Speech.cpp/raw/main/scripts/install.sh | sh
+```
+
+```powershell
+# Windows
+irm https://github.com/NVIDIA/NeMo-Speech.cpp/raw/main/scripts/install.ps1 | iex
+```
+
+The installer selects CUDA when `nvidia-smi` is present, Metal on Apple silicon, and CPU otherwise. Pass `--backend cpu`, `--backend cuda` or `--backend vulkan` to choose explicitly. See the upstream [installation guide](https://github.com/NVIDIA/NeMo-Speech.cpp/blob/main/docs/install.md) for toolkit requirements and the full option list.
+
+BridgeClip looks for the runtime in `engine-bin/nemo-speech` first, then in the installer's default prefix (`~/.local/bin`, `/usr/local/bin`, or `%LOCALAPPDATA%\Programs\NeMoSpeech`). A packaged build therefore behaves the same as a source checkout, and an existing install is reused rather than duplicated.
+
+### Add the model
+
+The model is distributed separately. Place `nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` in one of:
+
+| Platform | Directory |
+| --- | --- |
+| staged, any platform | `engine-bin/models/` |
+| Linux | `${XDG_CACHE_HOME:-~/.cache}/nemo-speech/models/` |
+| macOS | `~/Library/Caches/NeMoSpeech/models/` |
+| Windows | `%LOCALAPPDATA%\NeMoSpeech\models\` |
+
+`Settings → Transcription → Detect` reports whether the runtime and the model were found, which backends are compiled in, and which devices exist. Only device names, backend flags, the version and the model file name reach the renderer: no path, environment value or credential crosses the process boundary. Device names and descriptions come from the GPU driver, so they are sanitised before display.
+
+### Choosing a device
+
+`TRANSCRIPTION_DEVICE`, or the Device control in Settings, accepts `auto`, `cpu`, `cuda`, `vulkan`, `metal`, `gpu`, and an indexed form such as `vulkan:0` for a machine with several GPUs. `auto` is the default and lets the runtime choose the best compiled backend, which is the GPU when a CUDA or Vulkan build is installed. Any other value is rejected in settings, because the value becomes a subprocess argument.
+
+A CPU-only runtime still works and simply runs on the processor. Local runs report a definite zero cost rather than an unknown one, and local word and segment handling is the same code path as the hosted one, so caption timing is validated identically either way.
+
 Advanced searches the live [OpenRouter model catalog](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties) by model name, provider and ID. The main process reads the public catalog with separate `output_modalities=text` and `output_modalities=transcription` filters; no key is needed for discovery. Results are cached for ten minutes, requests time out after fifteen seconds, response bodies are bounded, and Refresh models retries a failed lookup. Selecting a model never invokes it. A failed refresh preserves existing selections and previously loaded results.
 
 Planning choices must advertise text input, text output and structured outputs. The model's output limit caps BridgeClip's 32,000-token allowance. Advanced uses the model's default reasoning behavior, which also accommodates models without reasoning controls. Text-only planners work with speech transcripts; a silent video requires a model with image input. Catalog availability and task compatibility are validated again in main before queuing, and only validated IDs and bounded capabilities reach the engine. Custom choices travel with each queued job and are shown in Review. Switching to a preset ignores the retained custom choices.

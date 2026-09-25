@@ -1,5 +1,6 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
+import { homedir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
 import {
@@ -15,16 +16,43 @@ const MAX_DOCTOR_BYTES = 1_000_000
 const MODEL_FILE = 'nemotron-3.5-asr-streaming-0.6b.q8_0.gguf'
 
 /**
- * Locate the NeMo-Speech.cpp CLI inside an `engine-bin` directory.
+ * Directories the upstream runtime may hold the model in.
  *
- * `engine-bin` holds the runtime, the model and the media tools, and sits
- * beside the Python `engine` directory rather than inside it, so the caller
- * passes that root explicitly rather than the engine package path.
+ * The model is never downloaded by BridgeClip. These are the project-staged
+ * directory and the runtime's own cache, so a user who already installed the
+ * runtime with NVIDIA's script does not have to place a second copy.
+ */
+function modelCandidates(engineBinPath: string): string[] {
+  const home = homedir()
+  const cacheRoot = process.env.XDG_CACHE_HOME ?? join(home, '.cache')
+  return [
+    join(engineBinPath, 'models', MODEL_FILE),
+    join(cacheRoot, 'nemo-speech', 'models', MODEL_FILE),
+    join(home, 'Library', 'Caches', 'NeMoSpeech', 'models', MODEL_FILE),
+    ...(process.platform === 'win32'
+      ? [join(process.env.LOCALAPPDATA ?? join(home, 'AppData', 'Local'), 'NeMoSpeech', 'models', MODEL_FILE)]
+      : [])
+  ]
+}
+
+/**
+ * Locate the NeMo-Speech.cpp CLI.
+ *
+ * `engine-bin/nemo-speech` is the project-staged copy and is preferred so a
+ * packaged app and a development checkout behave the same. The upstream
+ * installer's default prefixes are checked as well, so a user who installed
+ * the runtime with NVIDIA's own script does not have to stage a second copy.
  */
 export function resolveNemoSpeech(engineBinPath: string): string | null {
   const executable = process.platform === 'win32' ? 'nemo-speech.exe' : 'nemo-speech'
-  const direct = join(engineBinPath, 'nemo-speech', 'bin', executable)
-  return existsSync(direct) ? direct : null
+  const candidates = [
+    join(engineBinPath, 'nemo-speech', 'bin', executable),
+    join(homedir(), '.local', 'bin', executable),
+    ...(process.platform === 'win32'
+      ? [join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Programs', 'NeMoSpeech', 'bin', executable)]
+      : [join('/usr', 'local', 'bin', executable)])
+  ]
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
 }
 
 /**
@@ -84,7 +112,7 @@ export async function readNemoRuntime(engineBinPath: string): Promise<NemoRuntim
     const report = JSON.parse(stdout) as Record<string, unknown>
     const features = (report.features ?? {}) as Record<string, unknown>
     const devices = parseDevices(report.devices)
-    const modelPath = join(engineBinPath, 'models', MODEL_FILE)
+    const hasModel = modelCandidates(engineBinPath).some((candidate) => existsSync(candidate))
     return {
       available: true,
       version: text(report.version, 20),
@@ -93,7 +121,7 @@ export async function readNemoRuntime(engineBinPath: string): Promise<NemoRuntim
       backendCuda: features.backend_cuda === true,
       backendMetal: features.backend_metal === true,
       devices,
-      modelName: existsSync(modelPath) ? MODEL_FILE : null,
+      modelName: hasModel ? MODEL_FILE : null,
       error: null
     }
   } catch (error) {

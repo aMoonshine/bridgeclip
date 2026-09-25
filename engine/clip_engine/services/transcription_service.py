@@ -642,13 +642,49 @@ class TranscriptionService:
         return getattr(self.settings, "transcription_backend", "openrouter") == "nemotron"
 
     def _nemotron_runtime(self) -> tuple[str, str]:
-        """Resolve the bundled NeMo-Speech.cpp runtime and model for this project."""
+        """Resolve the NeMo-Speech.cpp runtime and the local model.
+
+        The project-staged copy under `engine-bin` is preferred so a packaged
+        app and a development checkout behave the same. The upstream installer's
+        prefix and model cache are accepted too, so a user who installed the
+        runtime with NVIDIA's own script does not need a second copy. Nothing is
+        downloaded here: a missing runtime or model is reported, never fetched.
+        """
         root = Path(__file__).resolve().parents[3]
-        executable = self.settings.nemo_speech_path or str(
-            root / "engine-bin" / "nemo-speech" / "bin" / ("nemo-speech.exe" if os.name == "nt" else "nemo-speech")
-        )
-        model = self.settings.nemotron_model_path or str(root / "engine-bin" / "models" / NEMOTRON_FILENAME)
-        if not Path(executable).is_file() or not Path(model).is_file():
+        override = self.settings.nemo_speech_path
+        if override:
+            executables = [Path(override)]
+        elif os.name == "nt":
+            local_appdata = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+            executables = [
+                root / "engine-bin" / "nemo-speech" / "bin" / "nemo-speech.exe",
+                Path.home() / ".local" / "bin" / "nemo-speech.exe",
+                Path(local_appdata) / "Programs" / "NeMoSpeech" / "bin" / "nemo-speech.exe",
+            ]
+        else:
+            executables = [
+                root / "engine-bin" / "nemo-speech" / "bin" / "nemo-speech",
+                Path.home() / ".local" / "bin" / "nemo-speech",
+                Path("/usr/local/bin/nemo-speech"),
+            ]
+        executable = next((str(path) for path in executables if path.is_file()), None)
+
+        model_override = self.settings.nemotron_model_path
+        if model_override:
+            models = [Path(model_override)]
+        else:
+            cache_root = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
+            models = [
+                root / "engine-bin" / "models" / NEMOTRON_FILENAME,
+                Path(cache_root) / "nemo-speech" / "models" / NEMOTRON_FILENAME,
+                Path.home() / "Library" / "Caches" / "NeMoSpeech" / "models" / NEMOTRON_FILENAME,
+            ]
+            if os.name == "nt":
+                local_appdata = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+                models.append(Path(local_appdata) / "NeMoSpeech" / "models" / NEMOTRON_FILENAME)
+        model = next((str(path) for path in models if path.is_file()), None)
+
+        if executable is None or model is None:
             raise TranscriptionError("Local transcription model or runtime is unavailable", reason="local_unavailable")
         return executable, model
 
