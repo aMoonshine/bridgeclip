@@ -515,6 +515,55 @@ test('network policy rejects private literals and private DNS results', async ()
 })
 
 
+test('network policy accepts a host that mixes one public answer with unroutable ones', async () => {
+  // A VPN resolver commonly returns a real A record together with a ULA AAAA
+  // record for the tunnel interface. The name is still reachable over IPv4, so
+  // it must not be refused as "private or reserved".
+  const policy = loadSource('network-policy.ts', {
+    './security': security,
+    'dns/promises': {
+      lookup: async (host) => {
+        assert.equal(host, 'vpn.example')
+        return [
+          { address: 'fdcc:ad94:bacf:61a4::cafe:7', family: 6 },
+          { address: '93.184.216.34', family: 4 }
+        ]
+      }
+    }
+  })
+  await policy.assertPublicWebUrl('https://vpn.example/video')
+})
+
+
+test('network policy still refuses a host whose answers are all private', async () => {
+  const policy = loadSource('network-policy.ts', {
+    './security': security,
+    'dns/promises': {
+      lookup: async () => [
+        { address: '10.0.0.1', family: 4 },
+        { address: 'fdcc:ad94:bacf:61a4::cafe:7', family: 6 }
+      ]
+    }
+  })
+  await assert.rejects(
+    () => policy.assertPublicWebUrl('https://lan.example/video'),
+    /resolved only to private or reserved addresses/
+  )
+})
+
+
+test('network policy rejects a name that resolves to nothing and reports a DNS outage', async () => {
+  const policy = loadSource('network-policy.ts', {
+    './security': security,
+    'dns/promises': { lookup: async () => { throw Object.assign(new Error('getaddrinfo EAI_AGAIN'), { code: 'EAI_AGAIN' }) } }
+  })
+  await assert.rejects(
+    () => policy.assertPublicWebUrl('https://down.example/video'),
+    /could not be verified\. Check your DNS connection and retry\./
+  )
+})
+
+
 test('cancellation retains a live process group after the leader closes and forces termination', () => {
   const { PassThrough } = require('node:stream')
   const { EventEmitter } = require('node:events')

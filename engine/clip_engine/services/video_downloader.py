@@ -28,7 +28,11 @@ from botocore.config import Config as BotocoreConfig
 
 from clip_engine.config import get_settings
 from clip_engine.error_policy import is_disk_full
-from clip_engine.network_policy import guarded_public_connections, resolve_public_destination
+from clip_engine.network_policy import (
+    guarded_public_connections,
+    resolve_public_destination,
+    unreachable_ipv6_fallback,
+)
 from clip_engine.services.media_process import (guarded_ytdlp_children, run_media,
                                                 validate_video_dimensions, MediaProcessError)
 
@@ -497,6 +501,13 @@ class VideoDownloaderService:
                 raise
             if source_type == "twitch" and not is_disk_full(e):
                 raise VideoDownloadError("Twitch VOD download failed", reason="twitch_unavailable") from e
+            if source_type not in ("local", "s3") and unreachable_ipv6_fallback(url):
+                raise VideoDownloadError(
+                    "IPv6 is advertised by this host but cannot be reached, so the download "
+                    "cannot use it. Disable the IPv6 route in your VPN tunnel, or turn off "
+                    "IPv6 on the tunnel adapter, then retry.",
+                    reason="ipv6_unreachable",
+                ) from e
             raise VideoDownloadError(f"Failed to download video: {e}") from e
 
         # Verify output exists
@@ -900,6 +911,15 @@ class VideoDownloaderService:
                     "YouTube is temporarily blocking this request. Please try again in a few moments, "
                     "or try a different video URL."
                 )
+            # A tunnel that advertises ::/0 over a ULA interface blackholes IPv6
+            # while IPv4 works. Report the cause instead of a generic failure.
+            if unreachable_ipv6_fallback(url):
+                raise VideoDownloadError(
+                    "IPv6 is advertised by this host but cannot be reached, so the download "
+                    "cannot use it. Disable the IPv6 route in your VPN tunnel, or turn off "
+                    "IPv6 on the tunnel adapter, then retry.",
+                    reason="ipv6_unreachable",
+                ) from e
             raise VideoDownloadError(f"Failed to get video info: {e}")
 
         if twitch_url:

@@ -30,9 +30,14 @@ def _public_address(sock: socket.socket, address):
     results = socket.getaddrinfo(host, port, sock.family, sock.type, sock.proto)
     if not results:
         raise OSError("Network destination could not be resolved")
-    if any(not ipaddress.ip_address(result[4][0]).is_global for result in results):
+    # Keep the answers that are actually connectable and refuse the name only
+    # when none are. A VPN resolver can answer with a mix of a real public
+    # record and a tunnel-local or otherwise unroutable one; rejecting the whole
+    # host on that basis blocks a request that succeeds over the other family.
+    public = [result[4] for result in results if ipaddress.ip_address(result[4][0]).is_global]
+    if not public:
         raise OSError("Local network destinations are not allowed")
-    return results[0][4]
+    return public[0]
 
 
 def install() -> None:

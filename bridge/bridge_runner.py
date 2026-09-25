@@ -111,6 +111,11 @@ FAILURES = (
     (("(401)", "status_code: 401", "unauthorized", "invalid api key", "invalid_api_key"),
      "An API key was rejected.",
      "Check your OpenRouter key in Settings."),
+    # Must precede the generic "connection" and "video download failed" markers:
+    # this message is raised for the same symptom, but with a VPN-specific cause.
+    (("ipv6",),
+     "Your VPN tunnel advertises IPv6 that cannot be reached.",
+     "Remove the IPv6 address and the ::/0 route from your VPN profile, or turn off IPv6 on the tunnel adapter, then retry."),
     (("timed out", "connection", "name resolution", "network is unreachable"),
      "A network request failed.",
      "Check your internet connection and retry."),

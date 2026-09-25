@@ -44,6 +44,15 @@ Current product facts:
 - Portable state belongs under a versioned project-local `data\` root. Credentials do not belong in portable files.
 - The former D: checkout is gone by owner decision. Work only from `Y:\ProjectsAI\bridgeclip`; do not recreate a second working copy.
 - `origin` is the product remote. `upstream` is read-only. No force-push, direct upstream write, history rewrite, second repository, tag, or release is authorized.
+- A VPN profile that carries a ULA IPv6 address together with a `::/0` route is treated as a host misconfiguration, not an app defect. The owner's `comp2.conf` is corrected; a corrected profile is required for the tunnel itself to work.
+
+## Current verified state (2026-09-25 network work)
+
+- Source validation accepts a host that resolves to a mix of public and unroutable answers, and refuses it only when every answer is private. Verified against `www.youtube.com` and `i.ytimg.com` through a live tunnel.
+- Requests are pinned to an IPv4 address when a name is dual-stack, and to the only available family otherwise. A test asserts an IPv6-only host still uses IPv6.
+- A download that fails while the host advertises unreachable IPv6 now reports `download.ipv6_unreachable` with a VPN-specific message and hint, instead of the generic "video could not be downloaded".
+- `pytest` is now installed in `engine\.venv` as a local development dependency; `engine/requirements.lock` is unchanged. The Python suite runs 397 tests.
+- Regression baseline on this checkout is unchanged by the network work: main 31 pass / 9 fail, renderer 22 pass, zernio 109 pass / 6 fail, release 9 pass / 2 fail, bridge 24 pass, typecheck, lint, and build pass. The recorded failures are pre-existing Windows file-mode and symlink assertions.
 
 ## Planned / not yet implemented
 

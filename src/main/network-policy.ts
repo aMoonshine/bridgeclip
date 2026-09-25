@@ -48,13 +48,22 @@ export async function assertPublicWebUrl(value: string, label = 'Source'): Promi
   }
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
+    // verbatim: false applies RFC 6724 destination-address ordering, which puts
+    // IPv4 first on dual-stack hosts. A VPN tunnel that advertises an
+    // unroutable IPv6 default route would otherwise hand us an IPv6 literal
+    // first and stall the whole job on a blackholed address family.
     const addresses = await Promise.race([
-      lookup(hostname, { all: true }),
+      lookup(hostname, { all: true, verbatim: false }),
       new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Source hostname lookup timed out')), 5000) })
     ])
     if (!addresses.length) throw new Error(`${label} host “${hostname}” did not resolve. Check the URL and DNS connection.`)
-    if (addresses.some(({ address }) => !isPublicAddress(address))) {
-      throw new Error(`${label} host “${hostname}” resolved to a private or reserved address. Check your VPN or DNS settings.`)
+    // Accept a name as soon as at least one answer is globally routable. A VPN
+    // resolver commonly mixes a real A record with an AAAA record that is
+    // public in form but has no working route, and rejecting the whole host on
+    // that basis blocks a download that would succeed over IPv4. The all-private
+    // case - a real LAN host - is still refused, because nothing is connectable.
+    if (!addresses.some(({ address }) => isPublicAddress(address))) {
+      throw new Error(`${label} host “${hostname}” resolved only to private or reserved addresses. Check your VPN or DNS settings.`)
     }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith(`${label} host `)) throw error

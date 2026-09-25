@@ -99,6 +99,25 @@ On Linux, use system FFmpeg with the libass-backed `ass` filter and Python 3.12.
 
 Do not publish a release from the current checkout. Resource staging, GPU runtime, manifest coverage, portable data, packaging, and final offline QA remain release blockers. See [Project status](docs/PROJECT_STATUS.md) and [Releasing](docs/RELEASING.md).
 
+### Running behind a VPN
+
+BridgeClip accepts a source URL when the host resolves to at least one publicly routable address, and it prefers IPv4 whenever a name publishes both address families. Downloads pin to a validated address instead of trusting the first DNS answer.
+
+This matters on VPN and split-tunnel setups. A tunnel profile that assigns a ULA IPv6 address (`fd…`) and still routes `::/0` leaves the machine with a default IPv6 route that cannot reach anything, while DNS keeps handing out perfectly valid-looking AAAA records. Requests then stall on the unreachable family instead of failing over. To avoid that, remove the IPv6 address and the `::/0` route from the profile, and keep only the IPv4 DNS server:
+
+```ini
+[Interface]
+Address = 10.8.0.7/24
+DNS = 1.1.1.1
+
+[Peer]
+AllowedIPs = 0.0.0.0/0
+```
+
+Keep `*.conf` untracked; the repository ignores it because a WireGuard profile contains `PrivateKey` and `PresharedKey`.
+
+If a download still fails, BridgeClip checks whether the host advertises IPv6 that this machine cannot reach and reports that specifically instead of a generic "video could not be downloaded".
+
 ### First run and troubleshooting
 
 1. Add your OpenRouter key in the setup card. A saved key is never shown again; paste a new one to replace it or choose **Remove key** in Settings.

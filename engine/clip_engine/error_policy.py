@@ -9,6 +9,14 @@ TWITCH_ERRORS = {
     "twitch_unavailable": "Twitch VOD unavailable",
 }
 
+DOWNLOAD_ERRORS = {
+    **TWITCH_ERRORS,
+    "ipv6_unreachable": (
+        "The video host advertises IPv6 but this connection cannot reach it. "
+        "Turn off the IPv6 route in your VPN tunnel, or retry without the VPN."
+    ),
+}
+
 DISK_FULL_ERRNOS = {errno.ENOSPC, getattr(errno, "EDQUOT", errno.ENOSPC)}
 DISK_FULL_MARKERS = ("no space left on device", "disk quota exceeded")
 
@@ -38,7 +46,7 @@ def safe_processing_error(error: Exception) -> str:
     if isinstance(error, TimeoutError):
         return "Processing timed out"
     if type(error).__name__ == "VideoDownloadError":
-        return TWITCH_ERRORS.get(getattr(error, "reason", None), "Video download failed")
+        return DOWNLOAD_ERRORS.get(getattr(error, "reason", None), "Video download failed")
     if type(error).__name__ == "TranscriptionProviderError":
         return {
             "auth": "Transcription authentication failed",
