@@ -225,6 +225,21 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(bridge.describe_failure("Transcription authentication failed")["message"], "OpenRouter rejected the transcription request.")
         self.assertEqual(bridge.describe_failure("Transcription account credit limit reached")["message"], "OpenRouter could not transcribe the video because the account has insufficient credit or a spending limit.")
         self.assertEqual(bridge.describe_failure("Transcription providers are temporarily rate limited")["message"], "Transcription providers are busy after automatic recovery attempts.")
+
+    def test_youtube_challenge_reports_the_network_address_not_a_generic_failure(self):
+        described = bridge.describe_failure("YouTube is challenging this connection")
+        self.assertNotEqual(described["message"], "The video could not be downloaded.")
+        self.assertIn("refused the download from this network address", described["message"])
+        self.assertIn("VPN", described["hint"])
+
+    def test_blackholed_ipv6_is_reported_before_the_generic_network_markers(self):
+        # The message contains the word "connection", which a later marker list
+        # would otherwise match first.
+        described = bridge.describe_failure(
+            "The video host advertises IPv6 but this connection cannot reach it."
+        )
+        self.assertNotEqual(described["message"], "A network request failed.")
+        self.assertIn("IPv6", described["message"])
         self.assertEqual(bridge.describe_failure("Transcription service unavailable")["message"], "OpenRouter could not be reached for transcription.")
         self.assertEqual(bridge.describe_failure("Transcription request rejected by provider")["message"], "OpenRouter rejected the transcription audio request.")
         self.assertEqual(bridge.describe_failure("Transcription response lacked word timestamps")["message"], "OpenRouter returned a transcript without word timestamps.")
