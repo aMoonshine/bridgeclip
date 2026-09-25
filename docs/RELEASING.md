@@ -1,86 +1,54 @@
 # Releasing BridgeClip
 
-## Release status
+BridgeClip source and official downloads live in `bridge-mind/bridgeclip`. Tests, package rehearsals, signing, and publication run in the maintainer's private automation repository. Public GitHub repositories cannot make Actions logs private. Public Actions execution is disabled; no signing credentials belong in this repository.
 
-**No release is approved by the current documentation baseline.** The repository contains macOS and Windows packaging configuration, but configuration is not release evidence.
+Only `matthewmiller2925` maintains the upstream repository. Main requires a pull request and the configured checks; release tags cannot be moved or deleted. Pull requests are limited to collaborators. Public source can still be forked under the MIT license. Administrators can change access policy, so review collaborators and automation access before each release.
 
-Current blockers include:
+## Packages
 
-- The local NeMo `0.1.0` bundle now passes GPU acceptance on Vulkan. Reproducing it on a clean machine still requires staging the official GPU archive by hand, which is not automated yet.
-- Provider selection, official Codex/ChatGPT-plan access, explicit model discovery, and GPU device controls are not implemented.
-- Project-local `data\`, migration, drafts, recent projects, crash recovery, and non-destructive history clearing are not implemented.
-- Deterministic resource staging, the public-draft manifest, third-party notices, unpacked Windows packaging, signing, and clean-machine/update tests are not all verified.
-- The manifest does not yet include the new documentation baseline or the tracked Windows launchers (`start-windows.cmd` and `start-windows.ps1`). `scripts/export-public-draft.sh` should reject unreviewed files rather than silently producing a public snapshot.
+| System | Architecture | Download | Verification |
+| --- | --- | --- | --- |
+| macOS | Apple silicon, Intel | DMG and updater ZIP | Developer ID, team `9CBJCDR3J2`, notarized app and DMG, stapling, Gatekeeper |
+| Windows | x64 | NSIS EXE | BRIDGEMIND LLC Authenticode signatures; timestamp; installed runtime smoke |
+| Linux | x64 | AppImage and DEB | Installed/extracted runtime smoke; signed checksum manifest |
 
-The existing `upstream` remote and any GitHub release page do not prove that the current checkout is a reviewed or releasable public snapshot. Start from the canonical `Y:\ProjectsAI\bridgeclip` checkout, the [project status](PROJECT_STATUS.md), and recorded evidence.
+These targets describe the pipeline, not an assertion that a release is available. Windows ARM64 and Linux ARM64 are not release targets. Initial native package rehearsals and credential provisioning must pass before the first release. Do not advertise an unsupported OS version based only on the build runner version.
 
-## Publication rules
+## Maintainer sequence
 
-1. Keep the D: source checkout unchanged as rollback evidence.
-2. Do not publish from a dirty worktree, shallow history, stale model/runtime, or unreviewed exported bytes.
-3. Do not include `data\`, credentials, raw tokens, `auth.json`, caches, local logs, or unreviewed ignored files.
-4. Do not download a replacement ASR model automatically. Stage and hash the existing model only after ownership and redistribution review.
-5. Do not make live paid/authenticated provider calls during automated release verification.
-6. No tag, release, push, direct upstream write, or force-push is authorized by this document. Those actions require explicit owner approval after all gates pass.
+1. Review the public commit, dependency notices, and generated inventories. Do not publish pre-BridgeClip private history. The existing export script remains available for constructing a clean public source snapshot.
+2. Run private CI for the exact 40-character source commit. It runs macOS, Windows, and Linux checks plus macOS/Linux Electron end-to-end tests without signing credentials. The private source watcher checks main and maintainer-owned pull requests periodically; dispatch manually for an immediate run.
+3. Run the private package rehearsal for that commit. This exercises native packaging and the relocated clipping runtime without publishing unsigned packages.
+4. Create an immutable `vX.Y.Z` tag on reviewed main, matching `package.json`. Dispatch the private release workflow from its protected main branch with `platform=all`, `macos`, `windows`, or `linux`. The version tag stays the same format regardless of platform. The workflow resolves `refs/tags/<tag>`, checks main ancestry and version, freezes one commit, and runs CI again for that exact commit.
+5. Selected release jobs stage runtimes, build packages, sign/notarize them, and test the packaged clipping engine. A macOS selection always builds Apple silicon and Intel. Windows acceptance installs the actual NSIS artifact and checks its publisher. Linux acceptance installs the DEB and extracts the AppImage. A captioned H.264 clip at 2× speed must retain audio and have the expected duration.
+6. Publication requires every package for the selected platform, or all four platform/architecture builds for `all`. It verifies updater hashes against final bytes, merges macOS metadata when selected, creates a manifest recording the platform, adds the reviewed FFmpeg corresponding-source archive, and signs checksums using the separate release key. It rechecks the source tag, creates a draft, downloads every uploaded asset again, and compares every digest. With publication selected, only then does the draft become public. A later release for another platform needs a new version tag; published release bytes are never overwritten.
+7. Never overwrite a published version. Fixes use a new version/tag. An incomplete upload remains a draft; investigate before explicitly removing a failed draft and retrying. Withdraw a bad public version and replace it with a higher version so installed updaters can recover.
 
-## Required release order
+The website links to [GitHub Releases](https://github.com/bridge-mind/bridgeclip/releases). The updater reads `latest-mac.yml`, `latest.yml`, or `latest-linux.yml` from the complete published release. Test a real signed update from the first installed version to the next before claiming update acceptance; a packaging rehearsal does not prove an upgrade path.
 
-### 1. Verify the source baseline
+## Runtime reproduction
 
-```powershell
-git status --short --branch --untracked-files=all
-git rev-parse --is-shallow-repository
-git rev-parse HEAD
-git remote -v
-git fsck --full
+macOS: `bash scripts/prepare-resources.sh arm64` on Apple silicon, or `x64` on Intel. This builds LGPL FFmpeg and stages its caption libraries and licenses.
+
+Windows/Linux x64: `python scripts/release/stage-runtime.py` from a clean checkout. Windows requires Visual C++ build tools for the relocatable yt-dlp launcher. Linux requires `patchelf`. Python and FFmpeg downloads are pinned by SHA-256 in `scripts/release/runtime-lock.json`. An HTTPS mirror may be selected with `BRIDGECLIP_FFMPEG_MIRROR`, preserving the same digest checks. Upstream FFmpeg daily assets expire; official automation keeps a private mirror of the exact archives.
+
+Run `npm ci`, application and engine tests, dependency audits, `npm run build`, then electron-builder for the native target. Official Windows builds use `scripts/release/windows-config.cjs` with Azure signing configuration and `forceCodeSigning`; unsigned developer packages must never be labeled official releases.
+
+`scripts/release/verify-runtime.py <packaged-resources-directory>` copies resources to a path containing spaces and tests the shipped Python, FFmpeg, framing model, captions, speed, audio, and downloader without relying on the checkout. `scripts/release/collect-artifacts.cjs` rejects missing platforms, mismatched versions, and altered artifacts.
+
+Windows/Linux FFmpeg uses the LGPL shared upstream build, with OpenH264 for CPU encoding. Its LGPL version and dependency set differ from the minimal macOS build. macOS release jobs archive the exact FFmpeg source, bundled Homebrew library sources, formulas, patches, and license inventory for each architecture. Windows/Linux publication remains blocked until a reviewed corresponding-source distribution for their exact dependency set has a pinned URL and SHA-256 in private publication configuration. A link to upstream build recipes alone is not that distribution.
+
+## Verify a download
+
+Obtain `resources/release-public-key.pub` from a trusted source checkout. Compare its fingerprint independently before first use; trusting a key downloaded beside an artifact alone does not establish authenticity.
+
+Use OpenSSL 3 for this verification. On macOS, the built-in LibreSSL does not support this Ed25519 command; use the `openssl` executable from an OpenSSL 3 installation.
+
+```sh
+openssl pkeyutl -verify -rawin -pubin \
+  -inkey resources/release-public-key.pub \
+  -in SHA256SUMS.txt -sigfile SHA256SUMS.sig
+shasum -a 256 --check SHA256SUMS.txt
 ```
 
-Require a reviewed feature branch, full history, the expected `origin`/`upstream` roles, and no product-code changes outside the approved task. Record exact commands, exit codes, hashes, and evidence paths.
-
-### 2. Rebuild the public-draft manifest
-
-After the documentation and source review stabilizes, update `scripts/public-draft-manifest.txt` in its authorized task. Export to a new directory outside the checkout:
-
-```bash
-bash scripts/export-public-draft.sh /path/to/new-draft-directory
-```
-
-Review and secret-scan the exact exported bytes. The manifest checks paths, not ownership, licenses, model rights, or secret safety.
-
-### 3. Run offline source verification
-
-From the exact exported draft:
-
-```bash
-npm ci
-npm run typecheck
-npm run lint
-npm test
-npm run test:e2e
-npm run build
-npm audit --audit-level=low
-```
-
-Install locked Python dependencies, then run:
-
-```bash
-PYTHONPATH=engine python3 -m pytest -q engine/tests
-```
-
-Also run the Python dependency audit, resource/manifest checks, migration/restart/crash tests, provider mocks, and redacted Gitleaks scan. Record failures as failures; do not hide skips.
-
-### 4. Verify GPU and packaged resources
-
-Require `nemo-speech doctor --json` to report a compiled CUDA or Vulkan backend, then transcribe the approved local fixture with the existing model and verify text, non-empty words, and monotonic timestamps. CPU-only output is diagnostic only.
-
-A clean staging directory must contain the selected venv, Node/Electron dependencies, FFmpeg/ffprobe/yt-dlp, verified GPU NeMo runtime, existing model with recorded hash, launchers, notices, and the approved fixture. It must not contain secrets or portable user data. Run `npm run build` and an unpacked Windows packaging command before any signed artifact.
-
-### 5. Qualify artifacts
-
-Test installation, first launch, local GPU transcription, mocked provider flows, migration, restart/crash recovery, history clearing without media deletion, and update behavior on clean target machines. Record exact artifact hashes and updater metadata.
-
-### 6. Publish only after owner approval
-
-Create a protected release only from the reviewed commit and exact artifacts. Freeze the commit SHA, require protected environments/reviewers, verify signatures/notarization where applicable, and keep the release draft until all checks pass. Push product branches only to `origin`; `upstream` remains read-only.
-
-See [Portable Windows](PORTABLE_WINDOWS.md), [Open-source readiness](OPEN_SOURCE_READINESS.md), and [Upstream sync](UPSTREAM_SYNC.md).
+The manifest records the exact public source commit. macOS and Windows also have operating-system code signatures. Linux checksum signatures can be verified manually; the current Electron updater uses HTTPS and generated SHA-512 metadata and does not verify this detached signature itself.

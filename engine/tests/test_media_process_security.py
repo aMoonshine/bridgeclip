@@ -19,8 +19,11 @@ from clip_engine.services.video_downloader import VideoDownloaderService, VideoD
 
 
 def test_tool_output_and_exit_status():
-    result = run_media([sys.executable, "-c", "import sys; print('out'); sys.stderr.write('err'); sys.exit(3)"])
-    assert result.stdout.splitlines() == [b"out"] and result.stderr == b"err" and result.returncode == 3
+    # The double backslash is required: this is a Python string in this file, so
+    # "\\n" is what makes the child's source contain a newline escape rather
+    # than a literal line break.
+    result = run_media([sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'out\\n'); sys.stderr.write('err'); sys.exit(3)"])
+    assert result.stdout == b"out\n" and result.stderr == b"err" and result.returncode == 3
 
 
 @pytest.mark.parametrize("stream", ["stdout", "stderr"])

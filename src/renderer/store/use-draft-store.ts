@@ -17,7 +17,9 @@ export interface StartedJob {
  */
 export interface ClipDraft {
   source: string
-  clippingMode: 'quality' | 'economy'
+  clippingMode: 'quality' | 'economy' | 'advanced'
+  plannerModel: string
+  transcriptionModel: string
   aspectRatio: '9:16' | '16:9'
   /** 9:16 framing: smart per-shot layouts, always full frame, or letterbox. */
   layoutStyle: 'auto' | 'fill' | 'fit'
@@ -25,6 +27,7 @@ export interface ClipDraft {
   layoutVision: boolean
   /** tight: cut dead air and filler words; natural: original timing. */
   pacing: 'tight' | 'natural'
+  videoSpeed: number
   durations: string[]
   autoClipCount: boolean
   maxClips: number
@@ -50,10 +53,13 @@ interface DraftState extends ClipDraft {
 export const useDraftStore = create<DraftState>((set) => ({
   source: '',
   clippingMode: 'quality',
+  plannerModel: '',
+  transcriptionModel: '',
   aspectRatio: '9:16',
   layoutStyle: 'auto',
   layoutVision: true,
   pacing: 'tight',
+  videoSpeed: 1,
   durations: ['short'],
   autoClipCount: true,
   maxClips: 5,

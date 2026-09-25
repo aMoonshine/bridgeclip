@@ -11,7 +11,8 @@ import type {
 } from '../shared/zernio'
 import type { ClipMediaInfo, PostClipRequest, PostClipResult, PostProgress, PostRecord, PostsRefreshResult, TikTokCreatorInfo, TikTokLegalLink } from '../shared/zernio-posts'
 import type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
-import type { Automation, AutomationUpdate } from '../shared/automations'
+import type { Automation, AutomationUpdate, AutomationTikTokReview, AutomationTikTokReviewUpdate } from '../shared/automations'
+import type { OpenRouterCatalog } from '../shared/openrouter-models'
 
 export interface ClipSettings {
   openrouterConfigured: boolean
@@ -52,6 +53,7 @@ export interface ToolStatus {
 }
 
 export interface BridgeClipAPI {
+  models: { list: (refresh?: boolean) => Promise<OpenRouterCatalog> }
   automations: {
     list: () => Promise<Automation[]>
     create: (name: string) => Promise<Automation[]>
@@ -61,6 +63,8 @@ export interface BridgeClipAPI {
     addContent: (id: string) => Promise<Automation[]>
     addLibraryClips: (id: string, outputDir: string, clipIndices: number[]) => Promise<Automation[]>
     updateContent: (id: string, contentId: string, update: { title: string; caption: string; returnToQueue?: boolean }) => Promise<Automation[]>
+    prepareTikTokReview: (id: string, contentId: string) => Promise<AutomationTikTokReview>
+    approveTikTokReview: (id: string, contentId: string, update: AutomationTikTokReviewUpdate) => Promise<Automation[]>
     removeContent: (id: string, contentId: string) => Promise<Automation[]>
   }
   settings: {
@@ -162,6 +166,7 @@ function subscribe<T>(channel: string, callback: (data: T) => void): () => void 
 }
 
 const api: BridgeClipAPI = {
+  models: { list: (refresh = false) => ipcRenderer.invoke('models:list', refresh) },
   automations: {
     list: () => ipcRenderer.invoke('automations:list'),
     create: (name) => ipcRenderer.invoke('automations:create', name),
@@ -171,6 +176,8 @@ const api: BridgeClipAPI = {
     addContent: (id) => ipcRenderer.invoke('automations:addContent', id),
     addLibraryClips: (id, outputDir, clipIndices) => ipcRenderer.invoke('automations:addLibraryClips', id, outputDir, clipIndices),
     updateContent: (id, contentId, update) => ipcRenderer.invoke('automations:updateContent', id, contentId, update),
+    prepareTikTokReview: (id, contentId) => ipcRenderer.invoke('automations:prepareTikTokReview', id, contentId),
+    approveTikTokReview: (id, contentId, update) => ipcRenderer.invoke('automations:approveTikTokReview', id, contentId, update),
     removeContent: (id, contentId) => ipcRenderer.invoke('automations:removeContent', id, contentId)
   },
   settings: {

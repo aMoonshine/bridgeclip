@@ -1,79 +1,59 @@
 # Transcription
 
-## Current verified state
+## Local transcription is the default in this fork
 
-The canonical Windows source checkout defaults to local transcription with `nvidia/nemotron-3.5-asr-streaming-0.6b` through NeMo-Speech.cpp `0.1.0`. The runtime and existing GGUF model are under `engine-bin/`; the launcher uses:
+This fork differs from upstream here. The default transcription backend is **local**, not OpenRouter. `TRANSCRIPTION_BACKEND` defaults to `nemotron`, and `nvidia/nemotron-3.5-asr-streaming-0.6b` runs through the project-local NeMo-Speech.cpp `0.1.0` runtime:
 
 ```text
 engine-bin\nemo-speech\bin\nemo-speech.exe
 engine-bin\models\nemotron-3.5-asr-streaming-0.6b.q8_0.gguf
 ```
 
-For the current default path, FFmpeg extracts 16 kHz mono WAV and BridgeClip invokes:
+Audio and the resulting transcript never leave the computer on this path, and there is no API charge. The OpenRouter implementation documented below remains available and is selected explicitly; it is not a silent fallback.
+
+The installed runtime is the official Vulkan archive, and `nemo-speech doctor --json` reports:
+
+```text
+accelerator_available=true
+accelerator_compiled=true
+backend_vulkan=true
+devices[0] = Vulkan0 / NVIDIA GeForce RTX 3090
+```
+
+For the local path FFmpeg extracts 16 kHz mono WAV and BridgeClip invokes:
 
 ```text
 nemo-speech transcribe <audio.wav> --model <model.gguf> --language <locale> --format json --device auto
 ```
 
-`--device` was added with the GPU runtime and is now explicit. `auto`, the default, lets the runtime pick the best compiled backend, which is the GPU when a Vulkan or CUDA build is installed. `TRANSCRIPTION_DEVICE` may pin `cpu`, `vulkan:0`, or `cuda:0`; any value outside that documented set is rejected in settings, because it reaches a subprocess argv.
+`--device` is explicit. `auto`, the default, lets the runtime pick the best compiled backend, which is the GPU when a Vulkan or CUDA build is installed. `TRANSCRIPTION_DEVICE` may pin `auto`, `cpu`, `cuda`, `vulkan`, `metal`, `gpu`, or an indexed form such as `vulkan:0`; anything else is rejected in settings, because the value reaches a subprocess argv. Both local call sites forward it, including automatic posting metadata.
 
-The installed runtime is the official Vulkan archive, and the local check reports:
+GPU transcription is verified on `engine\tests\fixtures\nemo-jfk.wav`. The command with no `--device`, which is what the application sends, logs `backend=Vulkan0` and returns the expected text with 22 word objects and monotonic timestamps. The same 11-second clip took 1.95 s on `Vulkan0` against 3.38 s on `cpu`; the gap widens on longer audio because the encoder is compute-bound. The model is byte-identical before and after the runtime swap, and no model was downloaded.
 
-```text
-accelerator_available=true
-accelerator_compiled=true
-backend_cuda=false
-backend_vulkan=true
-devices[0] = Vulkan0 / NVIDIA GeForce RTX 3090 / type gpu
-```
+The installed bundle is `nemo-speech-0.1.0-windows-x86_64-vulkan.zip` from `NVIDIA/NeMo-Speech.cpp` release `v0.1.0`, verified against the published digest `b5e7b04a637da4eb25a60253e2db65774998e8dfb48c08b4db763009b82ac7ac`. A Vulkan backend DLL from an unrelated application cannot be substituted, because this ggml generation's loader expects a different backend symbol set. Reproduce the GPU runtime by repeating the download and digest check.
 
-GPU transcription is verified on the local fixture, and `auto` resolves to `Vulkan0`:
+## OpenRouter transcription and Advanced mode
 
-```text
-[asr] model=nemotron-3.5-asr-streaming-0.6b_q8_0 head=rnnt backend=Vulkan0
-text = "And so my fellow Americans ask not what your country can do for you. Ask what you can do for your country."
-```
+The remainder of this document describes the OpenRouter path that Advanced mode uses. It applies only when that backend is explicitly selected.
 
-The fixture returns 22 word objects with monotonic start and end values. The same 11-second clip took 1.95 s on `Vulkan0` against 3.38 s on `cpu` on this machine; the gap widens on longer audio because the encoder is compute-bound. CPU remains available as a diagnostic and as a fallback, but it is no longer the default path.
+BridgeClip has three per-run clipping modes. **Quality** (the default, including older requests) uses `anthropic/claude-opus-5.5` for planning and prefers `microsoft/mai-transcribe-2` for transcription. **Economy** uses `z-ai/glm-5.3-flash` and prefers `openai/whisper-large-v3-turbo`, with paid layout vision disabled and no higher-cost planner fallback. **Advanced** lets users search OpenRouter for a transcription model and a clip planning model. One OpenRouter key covers all modes.
 
-The model is unchanged by the runtime swap. `engine-bin\models\nemotron-3.5-asr-streaming-0.6b.q8_0.gguf` hashes to `3FC991D3BADAD7277C11030A7519832CDDAF2057AAFED6D4B25147E953A070B1` before and after, and no model was downloaded.
+Advanced searches the live [OpenRouter model catalog](https://openrouter.ai/docs/api/api-reference/models/list-all-models-and-their-properties) by model name, provider and ID. The main process reads the public catalog with separate `output_modalities=text` and `output_modalities=transcription` filters; no key is needed for discovery. Results are cached for ten minutes, requests time out after fifteen seconds, response bodies are bounded, and Refresh models retries a failed lookup. Selecting a model never invokes it. A failed refresh preserves existing selections and previously loaded results.
 
-Long recordings are split into five-minute chunks with one second of overlap. Word midpoints assign overlap words to one chunk, and timestamps are shifted back to the source-video timeline. A requested source range adds bounded context at each edge. Word timestamps are required for captions. The local model does not provide diarization in the current configuration.
+Planning choices must advertise text input, text output and structured outputs. The model's output limit caps BridgeClip's 32,000-token allowance. Advanced uses the model's default reasoning behavior, which also accommodates models without reasoning controls. Text-only planners work with speech transcripts; a silent video requires a model with image input. Catalog availability and task compatibility are validated again in main before queuing, and only validated IDs and bounded capabilities reach the engine. Custom choices travel with each queued job and are shown in Review. Switching to a preset ignores the retained custom choices.
 
-Automatic posting metadata also transcribes locally with the same NeMo executable and model, then sends only the resulting transcript to OpenRouter for GLM copy generation. It forwards the same validated device value and therefore also runs on the GPU.
+The transcription picker includes models from OpenRouter's dedicated transcription catalog, rather than treating every audio-capable chat model as a transcription model. Known models that reject timestamped transcripts are shown as unavailable. The catalog does not reliably advertise word-timestamp support for all models, so Advanced always requests and validates real word times; unsupported results fail with guidance to choose another model. It does not fabricate caption timing. See [OpenRouter's timestamp contract](https://openrouter.ai/docs/guides/overview/multimodal/stt).
 
-The engine retains a separate `TRANSCRIPTION_BACKEND=openrouter` implementation. When explicitly selected outside the current UI, it uploads audio chunks to OpenRouter, may use MAI or Whisper recovery models, and can incur OpenRouter charges. It is not the default and must not be described as an automatic local fallback.
+Advanced retries temporary errors using only the selected models: up to two transcription requests per chunk and three planning attempts. It never silently switches to preset transcription or planning models. Optional AI framing checks are still controlled in Format and use the existing Gemini-based framing service. Catalog text prices are shown for planning; transcription prices are not displayed because catalog units vary by provider. Actual reported usage takes precedence; if a custom model omits cost and no reliable estimate exists, results show a partial subtotal instead of a guessed full price.
 
-Quality and Economy currently both use local Nemotron for transcription. Quality can request GLM layout vision; Economy disables that optional request. Clip planning remains hardcoded to OpenRouter GLM in the current bridge.
+Transcription recovers automatically from provider failures. Economy tries **Whisper Turbo → Whisper Large V3 → MAI Transcribe 2**; Quality tries **MAI Transcribe 2 → Whisper Large V3 → Whisper Turbo**. A rate limit (429), timeout or temporary server/network failure gets one retry per model, then a fallback. Retry waits include jitter, honor numeric or HTTP-date `Retry-After`, and are limited to 15 seconds. If the provider asks for a longer wait, BridgeClip switches models without retrying that model early. Each chunk has at most six requests across the three models. Unsupported requests/models and missing or invalid word timestamps switch models immediately. Authentication failures, exhausted credits, redirects and oversized responses stop without further requests.
 
-## Owner decisions
+The working fallback is retained for subsequent chunks; completed chunks are not retranscribed. Progress shows part numbers, retry waits and model switches. Word timestamps remain mandatory for captions and cut timing. A 429 is reported separately from a 402 credit/spending-limit failure; a fallback cannot bypass an account-wide limit or a platform-wide outage. Provider choices cannot be pinned on OpenRouter's transcription endpoint, so BridgeClip sends separate supported model requests rather than unsupported chat-routing options.
 
-- GPU-capable local ASR is mandatory. CPU-only output cannot close Todo 6 or a release gate.
-- Accept only a compiled CUDA or Vulkan backend plus a real local fixture that returns text and monotonic word timestamps.
-- Do not download or replace the existing model during runtime staging or acceptance.
-- Codex/ChatGPT-plan access is not assumed to provide ASR. Codex is a separate provider with explicit role discovery.
-- OpenRouter remote transcription, if retained, must be an explicit user choice with clear audio egress and billing disclosure. It must not be a silent fallback.
+The engine posts base64 audio JSON to `https://openrouter.ai/api/v1/audio/transcriptions` and requires `verbose_json` with word timestamps for every model. MAI requests Azure speaker diarization and passes custom vocabulary through `provider.options.azure.phraseList.phrases`. Whisper requests do not enable diarization; they pass vocabulary as a Groq prompt hint when Groq serves the request. See the [OpenRouter speech-to-text contract](https://openrouter.ai/docs/guides/overview/multimodal/stt), [MAI Transcribe 2](https://openrouter.ai/microsoft/mai-transcribe-2), and [Whisper Large V3 Turbo](https://openrouter.ai/openai/whisper-large-v3-turbo).
 
-## Verified acceptance
+Audio stays at its original speed. Long recordings use five-minute chunks with one second of overlap; word midpoints assign overlap words to one chunk, and timestamps are shifted to the original video timeline. Speaker labels are scoped to each chunk because separate requests cannot establish a person's identity across chunks. Speech without word timing after all fallbacks fails instead of creating fabricated captions; a valid empty transcript can use visual-only planning in either mode. MAI does not supply the old provider's audio-event tags, so those remain empty.
 
-The acceptance commands that were previously listed as pending are now run and passing:
+Requests reject redirects and compressed responses, have a 90-second network timeout, and bound both audio and response sizes before buffering. The engine uses returned `usage.cost` when available, including zero; otherwise it estimates at $0.10 per input audio hour for MAI, $0.0108 for Whisper Turbo, or $0.0288 for [Whisper Large V3](https://openrouter.ai/openai/whisper-large-v3), the OpenRouter listed base prices on 2026-09-24. Provider routes can have different prices. Overlap audio and successful responses discarded for unusable timestamps count toward reported usage. Cost details include the models that returned audio transcripts and the total request count. Unknown charges from requests that timed out cannot be reconstructed locally; OpenRouter's billing is authoritative. Automation transcription bounds the combined transcript before metadata generation and uses its separate request path.
 
-```powershell
-& "Y:\ProjectsAI\bridgeclip\engine-bin\nemo-speech\bin\nemo-speech.exe" doctor --json
-& "Y:\ProjectsAI\bridgeclip\engine-bin\nemo-speech\bin\nemo-speech.exe" transcribe "Y:\ProjectsAI\bridgeclip\engine\tests\fixtures\nemo-jfk.wav" --model "Y:\ProjectsAI\bridgeclip\engine-bin\models\nemotron-3.5-asr-streaming-0.6b.q8_0.gguf" --language en-US --device vulkan:0 --format json
-```
-
-`vulkan:0` is the recorded equivalent of the planned `cuda:0` for this machine, which has the Vulkan runtime and driver but no CUDA archive. Acceptance is met on three points: the doctor reports a compiled accelerator, the transcript contains the expected text, and `words` is non-empty with monotonic timestamps.
-
-## Runtime provenance
-
-The installed bundle is the official `nemo-speech-0.1.0-windows-x86_64-vulkan.zip` from `NVIDIA/NeMo-Speech.cpp` release `v0.1.0`, verified against the published digest:
-
-```text
-size   21967184
-sha256 b5e7b04a637da4eb25a60253e2db65774998e8dfb48c08b4db763009b82ac7ac
-```
-
-A Vulkan backend DLL taken from an unrelated application cannot be substituted. The loader in this ggml generation resolves a different set of backend symbols than the bundles produced by the other application on this machine, and the official archive's own `ggml.dll` differs from the CPU-only archive's, so backends must come from the matching official archive rather than be mixed. The archive and the previous CPU bundle were removed after verification; reinstall by repeating this download and digest check.
-
-No live provider request is part of this documentation baseline. See [Providers](PROVIDERS.md) and [Project status](PROJECT_STATUS.md).
+`bridge/test_openrouter_transcription.py` covers the request, word timing, speaker 0, chunk offsets, cost reporting, silence, malformed results and safe provider failures. `engine/tests/test_transcription_recovery.py` exercises bounded retries, all fallback paths, `Retry-After`, cancellation, chunk continuity, billed discarded responses, fatal errors, safe error classification, embedded provider errors, and bounded streaming with real httpx and an offline transport. Automation tests exercise the OpenRouter payload with local mock services. Live provider behavior still needs a controlled run with an OpenRouter account; automated tests do not spend provider credits.
