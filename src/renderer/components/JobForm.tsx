@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, ListVideo, Minus, P
 import { cn, MOD_KEY, parseTimecode, sourceLabel } from '../lib/utils'
 import { useDraftStore, type ClipDraft, type WizardStep } from '../store/use-draft-store'
 import { useActiveJobs } from '../store/use-job-store'
+import { useSettingsStore } from '../store/use-settings-store'
 import type { ClipJobRequest } from '../../shared/jobs'
 import { MAX_PARALLEL_JOBS } from '../../shared/jobs'
 import { CaptionPresetPicker, CAPTION_PRESET_NAMES } from './CaptionPresetPicker'
@@ -407,7 +408,12 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
           })}
         </div>
         {draft.clippingMode === 'advanced' ? <AdvancedModels draft={draft} update={update} /> :
-          <p className="mt-2 text-2xs text-ink-subtle">Quality and Economy both plan with GLM and transcribe locally with Nemotron on the GPU. Economy skips the optional vision checks, reducing API usage.</p>}
+          <p className="mt-2 text-2xs text-ink-subtle">
+            Quality and Economy both plan with GLM and transcribe locally with Nemotron on the GPU. Economy skips the optional vision checks, reducing API usage. To choose a different transcription or planning model, switch to Advanced above.
+          </p>}
+      </Group>
+      <Group label="Models this run will use">
+        <ModelSummary draft={draft} />
       </Group>
       <Group label="Clip length" aside={draft.durations.length === 0 ? 'Any length' : `${draft.durations.length} selected`}>
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7" role="group" aria-label="Clip length options">
@@ -595,6 +601,50 @@ function AdvancedModels({ draft, update }: { draft: ClipDraft; update: Update })
       onChange={(plannerModel) => update({ plannerModel })} />
     <p className="text-2xs text-ink-subtle">Temporary errors are retried with your selected models. No automatic model switching. Usage bills your OpenRouter account. Optional AI framing checks use Gemini and can be changed in Format.</p>
   </div>
+}
+
+/**
+ * What this run will actually use, whatever the mode.
+ *
+ * The preset modes hide their models by design, which made it look like model
+ * selection had gone missing. Naming them here answers "which model is this
+ * using?" without opening Advanced.
+ */
+function ModelSummary({ draft }: { draft: ClipDraft }): React.JSX.Element {
+  const { transcriptionBackend, transcriptionDevice, nemoRuntime } = useSettingsStore()
+  const advanced = draft.clippingMode === 'advanced'
+  const device = transcriptionDevice === 'auto'
+    ? nemoRuntime.devices.some((entry) => entry.type === 'gpu') ? 'GPU' : 'CPU'
+    : transcriptionDevice
+  const local = transcriptionBackend === 'nemotron' && !advanced
+
+  const rows: { label: string; value: string; detail?: string }[] = [
+    {
+      label: 'Transcription',
+      value: advanced
+        ? draft.transcriptionModel || 'No model chosen yet'
+        : local ? 'Nemotron 3.5 ASR (on this computer)' : 'OpenRouter model',
+      detail: local ? `Device: ${device}. No API cost, audio never leaves this computer.` : 'Audio is sent to OpenRouter.'
+    },
+    {
+      label: 'Clip planning',
+      value: advanced ? draft.plannerModel || 'No model chosen yet' : 'GLM 5.3 Flash',
+      detail: 'Chooses the moments worth clipping.'
+    }
+  ]
+
+  return <dl className="grid gap-2">
+    {rows.map((row) => <div key={row.label} className="flex flex-wrap items-baseline gap-x-2">
+      <dt className="text-2xs uppercase tracking-wide text-ink-subtle">{row.label}</dt>
+      <dd className="text-xs text-ink">
+        <span className="font-mono">{row.value}</span>
+        {row.detail && <span className="ml-2 text-2xs text-ink-subtle">{row.detail}</span>}
+      </dd>
+    </div>)}
+    {advanced && <p className="text-2xs text-ink-subtle">
+      These are the models selected in Advanced. Switch to Quality or Economy to use the local preset instead.
+    </p>}
+  </dl>
 }
 
 function formatSeconds(total: number): string {

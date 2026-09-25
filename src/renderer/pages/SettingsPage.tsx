@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUpRight, BookA, Check, ChevronDown, Cpu, FolderOpen, Github, Info, KeyRound, Loader2, RefreshCw, ScrollText } from 'lucide-react'
+import { ArrowUpRight, BookA, Check, ChevronDown, Cpu, FolderOpen, Gauge, Github, Info, KeyRound, Loader2, RefreshCw, ScrollText } from 'lucide-react'
 import { useSettingsStore } from '../store/use-settings-store'
 import { useApiKeyDrafts } from '../hooks/use-api-key-drafts'
 import { getApi } from '../lib/ipc'
@@ -8,6 +8,7 @@ import { APP_NAME, APP_VERSION, BRIDGEMIND_URL, ISSUES_URL, LICENSE_NAME, PROVID
 import type { ClipSettings, ToolStatus } from '../../preload/index'
 import { ApiKeyInput } from '../components/ApiKeyInput'
 import { BridgeClipLogo } from '../components/brand/BridgeClipLogo'
+import { TranscriptionSettings } from '../components/TranscriptionSettings'
 import { Page } from '../components/ui/Page'
 import { PageHeader } from '../components/ui/PageHeader'
 import { Panel, PanelHeader } from '../components/ui/Panel'
@@ -17,11 +18,11 @@ import { Badge, StatusDot } from '../components/ui/Badge'
 import { IconTile } from '../components/ui/IconTile'
 import { Callout } from '../components/ui/Callout'
 
-type SectionId = 'keys' | 'vocabulary' | 'output' | 'system' | 'about'
+type SectionId = 'keys' | 'transcription' | 'vocabulary' | 'output' | 'system' | 'about'
 type SectionTone = 'success' | 'warning' | 'danger' | 'idle'
 
 export function SettingsPage(): React.JSX.Element {
-  const { outputDirectory, pythonPath, customVocabulary, openrouterConfigured, zernioConfigured, saving, save, toolStatus, toolError, checkTools, checkingTools } =
+  const { outputDirectory, pythonPath, customVocabulary, transcriptionBackend, transcriptionDevice, openrouterConfigured, zernioConfigured, saving, save, toolStatus, toolError, checkTools, checkingTools, nemoRuntime, checkingNemo, refreshNemoRuntime, loaded } =
     useSettingsStore()
   const keys = useApiKeyDrafts()
   const [isPackaged, setIsPackaged] = useState(true)
@@ -31,6 +32,12 @@ export function SettingsPage(): React.JSX.Element {
   useEffect(() => {
     getApi().system.isPackaged().then(setIsPackaged).catch(() => {})
   }, [])
+
+  // Ask the runtime what it can do, so the device list is populated on open
+  // rather than waiting for the Detect button.
+  useEffect(() => {
+    if (loaded && transcriptionBackend === 'nemotron' && !nemoRuntime.available) refreshNemoRuntime()
+  }, [loaded, transcriptionBackend, nemoRuntime.available, refreshNemoRuntime])
 
   const commit = async (patch: Partial<ClipSettings>, recheck = false): Promise<void> => {
     try {
@@ -53,6 +60,7 @@ export function SettingsPage(): React.JSX.Element {
 
   const sections: { id: SectionId; label: string; icon: ReactNode; tone: SectionTone }[] = [
     { id: 'keys', label: 'API keys', icon: <KeyRound />, tone: keysMissing ? 'warning' : 'success' },
+    { id: 'transcription', label: 'Transcription', icon: <Gauge />, tone: nemoRuntime.acceleratorAvailable ? 'success' : 'idle' },
     { id: 'vocabulary', label: 'Vocabulary', icon: <BookA />, tone: 'idle' },
     { id: 'output', label: 'Output', icon: <FolderOpen />, tone: 'idle' },
     { id: 'system', label: 'System check', icon: <Cpu />, tone: !toolsChecked ? 'idle' : toolsMissing ? 'danger' : 'success' },
@@ -160,6 +168,18 @@ export function SettingsPage(): React.JSX.Element {
                 />
               </KeyRow>
             </div>
+          </Section>
+
+          <Section id="transcription">
+            <TranscriptionSettings
+              backend={transcriptionBackend}
+              device={transcriptionDevice}
+              runtime={nemoRuntime}
+              checking={checkingNemo}
+              error={nemoRuntime.error}
+              onCommit={(patch) => void commit(patch)}
+              onRefresh={() => void refreshNemoRuntime()}
+            />
           </Section>
 
           <Section id="vocabulary">

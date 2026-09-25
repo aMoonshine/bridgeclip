@@ -132,6 +132,32 @@ def test_unreachable_ipv6_fallback_ignores_hosts_without_ipv4():
     assert seen == []
 
 
+def test_youtube_bot_check_keeps_its_cause_through_error_policy():
+    """A YouTube challenge must not collapse into the generic download failure."""
+    from clip_engine.error_policy import safe_processing_error, safe_failure_code
+    from clip_engine.services.video_downloader import VideoDownloadError
+
+    error = VideoDownloadError(
+        "YouTube is challenging this connection. It refuses downloads from datacenter and VPN addresses.",
+        reason="youtube_bot_check",
+    )
+    outward = safe_processing_error(error)
+    assert "challenging" in outward
+    assert safe_failure_code(error) == "download.youtube_bot_check"
+    assert "Video download failed" not in outward
+
+
+def test_unreachable_ipv6_keeps_its_cause_through_error_policy():
+    from clip_engine.error_policy import safe_processing_error, safe_failure_code
+    from clip_engine.services.video_downloader import VideoDownloadError
+
+    error = VideoDownloadError(
+        "IPv6 is advertised by this host but cannot be reached.", reason="ipv6_unreachable"
+    )
+    assert "IPv6" in safe_processing_error(error)
+    assert safe_failure_code(error) == "download.ipv6_unreachable"
+
+
 def test_unreachable_ipv6_fallback_ignores_a_fully_unreachable_host():
     """Both families dead is a plain outage, not a VPN IPv6 misconfiguration."""
     v6 = [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2001:4860:4860::8888", 443, 0, 0))]

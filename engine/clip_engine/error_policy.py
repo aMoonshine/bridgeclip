@@ -11,6 +11,7 @@ TWITCH_ERRORS = {
 
 DOWNLOAD_ERRORS = {
     **TWITCH_ERRORS,
+    "youtube_bot_check": "YouTube is challenging this connection",
     "ipv6_unreachable": (
         "The video host advertises IPv6 but this connection cannot reach it. "
         "Turn off the IPv6 route in your VPN tunnel, or retry without the VPN."
@@ -101,7 +102,7 @@ def safe_failure_code(error: Exception) -> str:
         return "transcription.unknown"
     if type(error).__name__ == "VideoDownloadError":
         reason = getattr(error, "reason", None)
-        return f"download.{reason}" if reason in TWITCH_ERRORS else "download.failed"
+        return f"download.{reason}" if reason in DOWNLOAD_ERRORS else "download.failed"
     if type(error).__name__ == "RenderingError":
         return "render.failed"
     return "pipeline.failed"
@@ -111,7 +112,7 @@ def safe_job_error_text(error: str | None) -> str | None:
     """Only expose known, fixed messages from stored job state."""
     if error is None:
         return None
-    if error in TWITCH_ERRORS.values():
+    if error in DOWNLOAD_ERRORS.values():
         return error
     if error in {
         "Processing timed out", "Video download failed", "No clip-worthy moments found",

@@ -200,6 +200,21 @@ class BridgeTests(unittest.TestCase):
     def test_failures_map_to_fixed_messages(self):
         blocked = bridge.describe_failure("YouTube download failed after trying all 5 proxies. Last error: ERROR: unable to download video data: HTTP Error 403: Forbidden")
         self.assertEqual(blocked["message"], "The video service refused the download.")
+
+    def test_youtube_challenge_reports_the_network_address_not_a_generic_failure(self):
+        described = bridge.describe_failure("YouTube is challenging this connection")
+        self.assertNotEqual(described["message"], "The video could not be downloaded.")
+        self.assertIn("refused the download from this network address", described["message"])
+        self.assertIn("VPN", described["hint"])
+
+    def test_blackholed_ipv6_is_reported_before_the_generic_network_markers(self):
+        # The message contains the word "connection", which a later marker list
+        # would otherwise match first.
+        described = bridge.describe_failure(
+            "The video host advertises IPv6 but this connection cannot reach it."
+        )
+        self.assertNotEqual(described["message"], "A network request failed.")
+        self.assertIn("IPv6", described["message"])
         secret = "socks5h://user:secret-pass@10.0.0.1:1 /Users/someone/private.mp4"
         fallback = bridge.describe_failure(RuntimeError(secret))
         self.assertEqual(fallback["message"], "The clipping pipeline failed.")

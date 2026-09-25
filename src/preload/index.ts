@@ -12,6 +12,7 @@ import type {
 import type { ClipMediaInfo, PostClipRequest, PostClipResult, PostProgress, PostRecord, PostsRefreshResult, TikTokCreatorInfo, TikTokLegalLink } from '../shared/zernio-posts'
 import type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
 import type { Automation, AutomationUpdate, AutomationTikTokReview, AutomationTikTokReviewUpdate } from '../shared/automations'
+import type { NemoRuntimeInfo } from '../shared/nemo-runtime'
 import type { OpenRouterCatalog } from '../shared/openrouter-models'
 
 export interface ClipSettings {
@@ -20,6 +21,8 @@ export interface ClipSettings {
   outputDirectory: string
   pythonPath: string
   customVocabulary: string
+  transcriptionBackend: 'nemotron' | 'openrouter'
+  transcriptionDevice: string
 }
 
 export type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
@@ -143,6 +146,7 @@ export interface BridgeClipAPI {
   system: {
     isPackaged: () => Promise<boolean>
     checkTools: () => Promise<ToolStatus>
+    nemoRuntime: () => Promise<NemoRuntimeInfo>
   }
   diagnostics: {
     getLogPath: () => Promise<string>
@@ -239,7 +243,8 @@ const api: BridgeClipAPI = {
   },
   system: {
     isPackaged: () => ipcRenderer.invoke('system:isPackaged'),
-    checkTools: () => ipcRenderer.invoke('system:checkTools')
+    checkTools: () => ipcRenderer.invoke('system:checkTools'),
+    nemoRuntime: () => ipcRenderer.invoke('system:nemoRuntime')
   },
   diagnostics: {
     getLogPath: () => ipcRenderer.invoke('diagnostics:getLogPath'),

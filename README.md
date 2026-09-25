@@ -37,7 +37,7 @@
                              word timings       best moments     one file per clip
 ```
 
-Transcription is local by default in this fork: NeMo-Speech.cpp runs the Nemotron model on your GPU through Vulkan, and neither the audio nor the transcript leaves the computer. Choosing **Advanced** switches transcription to an OpenRouter model you select. See [Transcription](docs/transcription.md).
+Transcription is local by default in this fork: NeMo-Speech.cpp runs the Nemotron model on your GPU through Vulkan, and neither the audio nor the transcript leaves the computer. Choose the device under **Settings → Transcription**. On the Create page, **Models this run will use** always names the transcription and planning models, whatever the mode; picking OpenRouter models is done in **Advanced** mode or by switching the provider in Settings. See [Transcription](docs/transcription.md).
 
 
 Every run gets its own folder. The **Library** shows completed clips with virality scores, timecodes and tags. **Jobs** shows what is running or queued right now (up to two clipping runs go at once; more wait in a queue) and every earlier run, including completed, failed, cancelled and interrupted jobs; completed runs open their clips, and failed runs from this session can run again. Older runs without a saved status appear as unfinished. You can optionally connect social accounts through Zernio to publish or schedule a selected clip.
@@ -129,6 +129,7 @@ If a download still fails, BridgeClip checks whether the host advertises IPv6 th
 
 1. Add your OpenRouter key in the setup card. A saved key is never shown again; paste a new one to replace it or choose **Remove key** in Settings.
 2. Run **Settings → System check**. In development, set the Python path if your local virtual environment is not detected.
+3. In **Settings → Transcription**, pick where speech is transcribed and on which device. `Automatic` uses the graphics card when the runtime reports one, and the processor otherwise. **Detect** re-reads what NeMo-Speech can run.
 3. Choose a local video with the file picker or paste a public video link, select clip lengths, framing, and caption style, then start. Smart framing automatically follows faces and arranges screen shares with facecams shot by shot. The optional AI vision check improves ambiguous layouts and can add OpenRouter cost. Dropping a local file opens the picker so you can grant access. Completed runs appear in Library and in your output folder.
 4. If a link fails, check it in a signed-out browser or download it yourself and select the local file. If a run fails, use the in-app error and System check first; logs intentionally omit raw provider responses and private source details.
 

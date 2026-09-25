@@ -2,6 +2,7 @@ import { app, safeStorage } from 'electron'
 import { closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { isAbsolute, join } from 'path'
 import { randomUUID } from 'crypto'
+import { normalizeDevice } from '../shared/nemo-runtime'
 
 /**
  * BridgeClip is bring-your-own-key: every provider call is made from this
@@ -16,10 +17,14 @@ export interface AppSettings {
   pythonPath: string
   /** Names and jargon the speech-to-text should spell correctly, one per line. */
   customVocabulary: string
+  /** Where transcription runs. 'nemotron' keeps audio on this computer. */
+  transcriptionBackend: 'nemotron' | 'openrouter'
+  /** Device passed to NeMo-Speech.cpp. 'auto' uses the GPU when one is compiled in. */
+  transcriptionDevice: string
 }
 
 export type ApiKeyName = 'openrouterApiKey' | 'zernioApiKey'
-export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary'> & {
+export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'transcriptionBackend' | 'transcriptionDevice'> & {
   openrouterConfigured: boolean
   zernioConfigured: boolean
 }
@@ -32,10 +37,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   zernioApiKey: '',
   outputDirectory: join(app.getPath('home'), 'BridgeClip'),
   pythonPath: process.platform === 'win32' ? 'python' : 'python3',
-  customVocabulary: ''
+  customVocabulary: '',
+  transcriptionBackend: 'nemotron',
+  transcriptionDevice: 'auto'
 }
 
-const SETTINGS_VERSION = 7
+const SETTINGS_VERSION = 8
 
 type PersistedSecret = { scheme: 'safeStorage' | 'base64'; value: string } | ''
 
@@ -46,6 +53,8 @@ interface PersistedSettings {
   outputDirectory: string
   pythonPath: string
   customVocabulary?: string
+  transcriptionBackend?: string
+  transcriptionDevice?: string
 }
 
 function ensureDir(dir: string): string {
@@ -69,7 +78,11 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     zernioApiKey: (settings.zernioApiKey ?? DEFAULT_SETTINGS.zernioApiKey).trim(),
     outputDirectory: (settings.outputDirectory || DEFAULT_SETTINGS.outputDirectory).trim(),
     pythonPath: (settings.pythonPath || DEFAULT_SETTINGS.pythonPath).trim(),
-    customVocabulary: vocabularyTerms(settings.customVocabulary ?? DEFAULT_SETTINGS.customVocabulary).join('\n')
+    customVocabulary: vocabularyTerms(settings.customVocabulary ?? DEFAULT_SETTINGS.customVocabulary).join('\n'),
+    transcriptionBackend: settings.transcriptionBackend === 'openrouter' ? 'openrouter' : 'nemotron',
+    // Anything outside the documented device set falls back to automatic
+    // selection rather than being forwarded to the runtime.
+    transcriptionDevice: normalizeDevice(settings.transcriptionDevice) ?? DEFAULT_SETTINGS.transcriptionDevice
   }
   normalized.outputDirectory ||= DEFAULT_SETTINGS.outputDirectory
   normalized.pythonPath ||= DEFAULT_SETTINGS.pythonPath
@@ -142,7 +155,9 @@ export function loadSettings(): AppSettings {
       ...secrets,
       outputDirectory: typeof raw.outputDirectory === 'string' ? raw.outputDirectory : DEFAULT_SETTINGS.outputDirectory,
       pythonPath: typeof raw.pythonPath === 'string' ? raw.pythonPath : DEFAULT_SETTINGS.pythonPath,
-      customVocabulary: typeof raw.customVocabulary === 'string' ? raw.customVocabulary : DEFAULT_SETTINGS.customVocabulary
+      customVocabulary: typeof raw.customVocabulary === 'string' ? raw.customVocabulary : DEFAULT_SETTINGS.customVocabulary,
+      transcriptionBackend: typeof raw.transcriptionBackend === 'string' ? raw.transcriptionBackend as 'nemotron' | 'openrouter' : DEFAULT_SETTINGS.transcriptionBackend,
+      transcriptionDevice: typeof raw.transcriptionDevice === 'string' ? raw.transcriptionDevice : DEFAULT_SETTINGS.transcriptionDevice
     })
 
     if (needsMigration && canEncrypt()) writeSettings(settings)
@@ -162,7 +177,9 @@ function writeSettings(settings: AppSettings): void {
     zernioApiKey: encodeSecret(settings.zernioApiKey),
     outputDirectory: settings.outputDirectory,
     pythonPath: settings.pythonPath,
-    customVocabulary: settings.customVocabulary
+    customVocabulary: settings.customVocabulary,
+    transcriptionBackend: settings.transcriptionBackend,
+    transcriptionDevice: settings.transcriptionDevice
   }
 
   let fd: number | undefined
@@ -190,18 +207,25 @@ export function publicSettings(settings: AppSettings): PublicSettings {
     outputDirectory: settings.outputDirectory,
     pythonPath: settings.pythonPath,
     customVocabulary: settings.customVocabulary,
+    transcriptionBackend: settings.transcriptionBackend,
+    transcriptionDevice: settings.transcriptionDevice,
     openrouterConfigured: Boolean(settings.openrouterApiKey),
     zernioConfigured: Boolean(settings.zernioApiKey)
   }
 }
 
-export function savePublicSettings(update: Pick<PublicSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary'>): PublicSettings {
+export type PublicSettingsUpdate = Pick<PublicSettings,
+  'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'transcriptionBackend' | 'transcriptionDevice'>
+
+export function savePublicSettings(update: Partial<PublicSettingsUpdate>): PublicSettings {
   const current = loadSettings()
   return publicSettings(saveSettings({
     ...current,
-    outputDirectory: update.outputDirectory,
-    pythonPath: update.pythonPath,
-    customVocabulary: update.customVocabulary
+    outputDirectory: update.outputDirectory ?? current.outputDirectory,
+    pythonPath: update.pythonPath ?? current.pythonPath,
+    customVocabulary: update.customVocabulary ?? current.customVocabulary,
+    transcriptionBackend: update.transcriptionBackend ?? current.transcriptionBackend,
+    transcriptionDevice: update.transcriptionDevice ?? current.transcriptionDevice
   }))
 }
 
@@ -235,6 +259,9 @@ export function getSettingsForBridge(settings: AppSettings): Record<string, stri
   return {
     OPENROUTER_API_KEY: settings.openrouterApiKey,
     LOCAL_MODE: 'true',
-    LOCAL_OUTPUT_DIR: settings.outputDirectory
+    LOCAL_OUTPUT_DIR: settings.outputDirectory,
+    // Validated on write, so this is always a documented device name.
+    TRANSCRIPTION_BACKEND: settings.transcriptionBackend,
+    TRANSCRIPTION_DEVICE: settings.transcriptionDevice
   }
 }

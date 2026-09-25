@@ -908,8 +908,9 @@ class VideoDownloaderService:
             if "Sign in to confirm" in error_str or "bot" in error_str.lower():
                 logger.error("YouTube bot detection triggered for metadata")
                 raise VideoDownloadError(
-                    "YouTube is temporarily blocking this request. Please try again in a few moments, "
-                    "or try a different video URL."
+                    "YouTube is challenging this connection. It refuses downloads from datacenter and "
+                    "VPN addresses until you prove you are not a bot.",
+                    reason="youtube_bot_check",
                 )
             # A tunnel that advertises ::/0 over a ULA interface blackholes IPv6
             # while IPv4 works. Report the cause instead of a generic failure.

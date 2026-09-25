@@ -1,4 +1,4 @@
-const test = require('node:test')
+﻿const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
@@ -26,6 +26,8 @@ process.on('exit', () => fs.rmSync(TEST_WORK_HOME, { recursive: true, force: tru
 const jobContract = loadShared('job-contract.ts')
 const jobOutput = loadShared('job-output.ts')
 const videoSource = loadShared('video-source.ts')
+const nemoRuntime = loadShared('nemo-runtime.ts')
+const NEMO_MOCKS = { '../shared/nemo-runtime': nemoRuntime }
 const runHistory = loadSource('run-history.ts', { '../shared/video-source': videoSource })
 const security = loadSource('security.ts', { electron: {}, '../shared/brand': loadShared('brand.ts') })
 const { validateJobConfig } = loadSource('validation.ts', { './security': security, '../shared/video-source': videoSource, '../shared/job-contract': jobContract, '../shared/openrouter-models': loadShared('openrouter-models.ts') })
@@ -172,6 +174,7 @@ test('the native picker authorizes media and shell opening rejects aliased appli
     const contents = { mainFrame: frame }
     const window = { webContents: contents, isDestroyed: () => false }
     const ipc = loadSource('ipc-handlers.ts', {
+    './nemo-runtime': { readNemoRuntime: async () => ({ available: false, version: null, acceleratorAvailable: false, backendVulkan: false, backendCuda: false, backendMetal: false, devices: [], modelName: null, error: null }) },
       electron: {
         app: { isPackaged: false },
         shell: { openPath: async () => { throw new Error('Unexpected shell launch') } },
@@ -245,7 +248,7 @@ test('saved provider keys remain in main and migrate away from legacy encoding',
   const file = path.join(userData, 'settings.json')
   fs.mkdirSync(userData)
   fs.writeFileSync(file, JSON.stringify({ openrouterApiKey: Buffer.from('dummy-provider-value').toString('base64'), outputDirectory: root }))
-  const settingsStore = loadSource('settings-store.ts', {
+  const settingsStore = loadSource('settings-store.ts', { ...NEMO_MOCKS,
     electron: {
       app: { getPath: (name) => ({ home: root, appData: root, userData }[name]), isReady: () => true },
       safeStorage: { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: (value) => Buffer.from(value), decryptString: (value) => value.toString() }
@@ -277,7 +280,7 @@ test('settings migration retires ElevenLabs without decrypting it and preserves 
     openrouterApiKey: { scheme: 'safeStorage', value: Buffer.from('active-openrouter').toString('base64') },
     elevenLabsApiKey: { scheme: 'safeStorage', value: Buffer.from('retired-key').toString('base64') }
   }))
-  const store = loadSource('settings-store.ts', { electron: {
+  const store = loadSource('settings-store.ts', { ...NEMO_MOCKS, electron: {
     app: { getPath: (name) => ({ home: root, appData: root, userData }[name]), isReady: () => true },
     safeStorage: { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: (value) => Buffer.from(value),
       decryptString: (value) => { assert.notEqual(value.toString(), 'retired-key'); return value.toString() } }
@@ -299,7 +302,7 @@ test('settings migration writes a private file', () => {
   fs.mkdirSync(userData)
   fs.writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ openrouterApiKey: Buffer.from('old-key').toString('base64'), outputDirectory: root }), { mode: 0o666 })
   fs.writeFileSync(path.join(userData, 'settings.json.tmp'), 'stale', { mode: 0o666 })
-  const store = loadSource('settings-store.ts', {
+  const store = loadSource('settings-store.ts', { ...NEMO_MOCKS,
     electron: {
       app: { getPath: (name) => ({ home: root, appData: root, userData }[name]), isReady: () => true },
       safeStorage: { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => 'gnome_libsecret', encryptString: (value) => Buffer.from(value), decryptString: (value) => value.toString() }
@@ -324,7 +327,7 @@ test('Windows resolves the saved legacy Python default without replacing an inst
   let python3Runnable = false
   let saved = null
   const app = { isPackaged: false, getPath: (name) => name === 'home' ? 'C:\\Users\\Test' : userData }
-  const store = loadSource('settings-store.ts', {
+  const store = loadSource('settings-store.ts', { ...NEMO_MOCKS,
     electron: { app, safeStorage: {} }, path: path.win32,
     fs: {
       existsSync: (file) => file === userData || (file === path.win32.join(userData, 'settings.json') && saved !== null),
@@ -344,7 +347,7 @@ test('Windows resolves the saved legacy Python default without replacing an inst
   }, { process: winProcess })
 
   assert.equal(store.loadSettings().pythonPath, 'python')
-  saved = { version: 7, openrouterApiKey: '', zernioApiKey: '', outputDirectory: 'C:\\Clips', pythonPath: 'python3' }
+  saved = { version: 8, openrouterApiKey: '', zernioApiKey: '', outputDirectory: 'C:\\Clips', pythonPath: 'python3' }
   assert.equal(store.loadSettings().pythonPath, 'python3', 'the persisted setting is not rewritten')
   assert.equal(runner.resolvePythonPath(engine, store.loadSettings().pythonPath), 'python')
 
