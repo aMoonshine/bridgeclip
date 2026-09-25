@@ -79,9 +79,15 @@ export async function transcribeAutomationClip(path: string): Promise<string> {
       throw new Error('The local Nemotron runtime or model is missing.')
     }
     const phrases = vocabularyTerms(settings.customVocabulary).slice(0, 20)
+    // "auto" resolves to the GPU when a Vulkan or CUDA NeMo build is installed.
+    // Only a documented device name is forwarded, so nothing arbitrary from the
+    // environment can reach the runtime's argv.
+    const requested = (process.env.BRIDGECLIP_TRANSCRIPTION_DEVICE ?? '').trim().toLowerCase()
+    const device = /^(auto|cpu|cuda|vulkan|metal|gpu)(:\d{1,2})?$/.test(requested) ? requested : 'auto'
     let transcript = ''
     for (const file of files) {
       const args = [...(testScript ? [testScript] : []), 'transcribe', join(directory, file), '--model', model, '--language', 'auto', '--format', 'json',
+        '--device', device,
         ...phrases.flatMap((phrase) => ['--speech-context', phrase])]
       const { stdout } = await execFileAsync(testScript ? process.execPath : nemo, args, { timeout: 900_000, maxBuffer: 4_000_000 })
       const result: unknown = JSON.parse(stdout)

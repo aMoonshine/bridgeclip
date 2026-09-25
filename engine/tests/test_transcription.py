@@ -116,6 +116,26 @@ def test_nemotron_command_uses_local_runtime_and_model(monkeypatch):
     monkeypatch.setattr(subprocess, "run", fake_run)
     response = asyncio.run(service._request_nemotron_transcript("clip.wav", "en", ["BridgeClip"]))
     assert response["text"] == "Hello."
+    # "auto" is explicit so a Vulkan or CUDA build is used, and a pinned device
+    # from settings is forwarded verbatim.
     assert seen["command"] == ["local-nemo", "transcribe", "clip.wav", "--model",
                                "local-model.gguf", "--language", "en-US", "--format", "json",
+                               "--device", "auto",
                                "--speech-context", "BridgeClip"]
+
+
+def test_nemotron_command_forwards_a_pinned_device(monkeypatch):
+    service = TranscriptionService.__new__(TranscriptionService)
+    service.settings = SimpleNamespace(transcription_device="vulkan:0")
+    monkeypatch.setattr(service, "_nemotron_runtime", lambda: ("local-nemo", "local-model.gguf"))
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "text": "Hello.", "words": [word("Hello.", 0.0, 0.5)], "languages": ["en-US"]
+        }).encode("utf-8"), b"")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    asyncio.run(service._request_nemotron_transcript("clip.wav", "en", None))
+    assert seen["command"][seen["command"].index("--device") + 1] == "vulkan:0"

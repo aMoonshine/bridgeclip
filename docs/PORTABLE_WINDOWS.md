@@ -12,7 +12,7 @@
 - Project-local Node: `Y:\ProjectsAI\bridgeclip\engine-bin\node\node-v22.23.3-win-x64`
 - Project-local media/runtime files: `Y:\ProjectsAI\bridgeclip\engine-bin\`
 
-Todo 2 recreated the venv at the Y: path and verified the real launcher with bounded startup and system checks. The current NeMo bundle is CPU-only; `nemo-speech doctor --json` reports no compiled accelerator. The checkout is verified for development startup, not GPU or Windows release acceptance.
+Todo 2 recreated the venv at the Y: path and verified the real launcher with bounded startup and system checks. `nemo-speech doctor --json` now reports a compiled Vulkan backend and the RTX 3090. The checkout is verified for development startup and local GPU transcription; it is not yet Windows release acceptance, because the GPU archive is still staged by hand rather than by the packaging scripts.
 
 Large runtime files, the model, `node_modules\`, and `engine\.venv\` are ignored by Git. Keep the project at the canonical path after venv creation because Windows activation files and launchers contain absolute paths.
 
@@ -69,7 +69,7 @@ Test-Path -LiteralPath $Electron -PathType Leaf
 & (Join-Path $Project 'start-windows.ps1')
 ```
 
-A passing development preflight resolves every local binary and starts the app. The current `doctor --json` result is expected to show CPU-only acceleration. GPU acceptance is not complete until a compiled CUDA/Vulkan backend and real GPU fixture pass as described in [Transcription](transcription.md).
+A passing development preflight resolves every local binary and starts the app. GPU acceptance is met on this machine: `doctor --json` reports `backend_vulkan=true` with the RTX 3090, and the local fixture transcribes on the GPU with word timestamps, as described in [Transcription](transcription.md). A machine without a GPU backend may still install a CPU bundle, but that is a diagnostic path and not release acceptance.
 
 ## Rollback rule
 

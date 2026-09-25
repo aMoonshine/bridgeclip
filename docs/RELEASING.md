@@ -6,7 +6,7 @@
 
 Current blockers include:
 
-- The local NeMo `0.1.0` bundle is CPU-only; mandatory CUDA/Vulkan GPU acceptance is incomplete.
+- The local NeMo `0.1.0` bundle now passes GPU acceptance on Vulkan. Reproducing it on a clean machine still requires staging the official GPU archive by hand, which is not automated yet.
 - Provider selection, official Codex/ChatGPT-plan access, explicit model discovery, and GPU device controls are not implemented.
 - Project-local `data\`, migration, drafts, recent projects, crash recovery, and non-destructive history clearing are not implemented.
 - Deterministic resource staging, the public-draft manifest, third-party notices, unpacked Windows packaging, signing, and clean-machine/update tests are not all verified.

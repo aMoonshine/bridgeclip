@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Current verified state:** automation audio is transcribed locally with Nemotron; only the resulting transcript is sent to OpenRouter for GLM metadata generation. The current local bundle is CPU-only.
+- **Current verified state:** automation audio is transcribed locally with Nemotron on the GPU through Vulkan; only the resulting transcript is sent to OpenRouter for GLM metadata generation.
 - **Owner decision:** AI metadata is optional, provider/model use must be explicit, and no autonomous paid call or model download is allowed.
 - **Planned / not yet implemented:** selectable providers/models, GPU enforcement, portable automation state, and portable draft/recovery behavior.
 

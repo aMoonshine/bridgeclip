@@ -22,7 +22,7 @@ flowchart LR
 
 The renderer is sandboxed, context-isolated, and has no Node integration. The preload exposes a narrow typed API. Main validates IPC input, owns process launch and cancellation, and authorizes local media. The Python bridge runs the in-repo engine and treats saved run files and provider responses as untrusted input.
 
-Current transcription uses `nvidia/nemotron-3.5-asr-streaming-0.6b` by default. The bundled NeMo runtime is present but CPU-only; no device is selected by the current application path, and GPU completion is not claimed. The engine also retains an OpenRouter audio-transcription implementation selected by `TRANSCRIPTION_BACKEND=openrouter`. It is not exposed as a provider choice in the current UI, sends audio to OpenRouter when selected, and can incur charges.
+Current transcription uses `nvidia/nemotron-3.5-asr-streaming-0.6b` by default. The bundled NeMo runtime is the official Vulkan build, and the application path passes `--device auto`, which resolves to the GPU when a compiled accelerator is present. `TRANSCRIPTION_DEVICE` can pin a device and is validated against the documented set before reaching argv. The engine also retains an OpenRouter audio-transcription implementation selected by `TRANSCRIPTION_BACKEND=openrouter`. It is not exposed as a provider choice in the current UI, sends audio to OpenRouter when selected, and can incur charges.
 
 Current planner and optional layout-vision behavior are hardcoded to `z-ai/glm-5.3-flash` through OpenRouter. The bridge requires an OpenRouter key. Codex, selectable providers/models, and model discovery are absent. ElevenLabs is not a current provider.
 

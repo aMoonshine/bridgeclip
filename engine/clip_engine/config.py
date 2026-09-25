@@ -6,6 +6,7 @@ for consistency and simplicity.
 """
 
 import os
+import re
 from functools import lru_cache
 from typing import List, Literal, Optional
 
@@ -13,6 +14,12 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
+
+# Device names NeMo-Speech.cpp accepts for --device, plus an indexed form so a
+# machine with several GPUs can pick one. "auto" is the default and resolves to
+# the best compiled backend at runtime, which is the GPU when one is present.
+TRANSCRIPTION_DEVICES = ("auto", "cpu", "cuda", "vulkan", "metal", "gpu")
+_DEVICE_INDEX = re.compile(r"^(cuda|vulkan|metal|gpu):\d{1,2}$")
 
 
 # ============================================================
@@ -658,6 +665,9 @@ class Settings(BaseSettings):
     transcription_backend: Literal["nemotron", "openrouter"] = "nemotron"
     nemo_speech_path: Optional[str] = None
     nemotron_model_path: Optional[str] = None
+    # auto lets NeMo-Speech.cpp pick the best compiled backend, which is the GPU
+    # when a Vulkan or CUDA build is installed. Pin cpu/vulkan:0/cuda:0 to force one.
+    transcription_device: str = "auto"
     transcription_diarize: bool = False
     # Selected by the desktop bridge per process before settings are loaded.
     clipping_mode: Literal["quality", "economy"] = "quality"
@@ -671,6 +681,18 @@ class Settings(BaseSettings):
                 f"{info.field_name.upper()} must be one of {', '.join(REASONING_EFFORTS)}"
             )
         return effort
+
+    @field_validator("transcription_device")
+    @classmethod
+    def _validate_transcription_device(cls, value: str) -> str:
+        """Accept only a device NeMo-Speech.cpp documents, so nothing arbitrary
+        from a job request or environment reaches the runtime's argv."""
+        device = (value or "auto").strip().lower()
+        if device not in TRANSCRIPTION_DEVICES and not _DEVICE_INDEX.match(device):
+            raise ValueError(
+                "TRANSCRIPTION_DEVICE must be auto, cpu, or a gpu index such as vulkan:0"
+            )
+        return device
 
     @staticmethod
     def _split_models(models: str, primary: str) -> List[str]:

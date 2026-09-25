@@ -647,6 +647,11 @@ class TranscriptionService:
         locale = {"ru": "ru-RU", "en": "en-US", "uk": "uk-UA"}.get(language or "auto", language or "auto")
         command = [executable, "transcribe", audio_path, "--model", model,
                    "--language", locale, "--format", "json"]
+        # "auto" lets the runtime pick the GPU when a Vulkan or CUDA build is
+        # installed. An explicit value is validated in settings, so only a
+        # documented device name can reach argv here.
+        device = getattr(self.settings, "transcription_device", "auto") or "auto"
+        command.extend(("--device", device))
         for term in normalize_keyterms(keyterms)[:20]:
             command.extend(("--speech-context", term))
         try:

@@ -23,8 +23,8 @@
 
 ## Why BridgeClip?
 
-- **Runs on your computer.** The current source checkout transcribes locally with NVIDIA Nemotron and calls OpenRouter for GLM clip planning, optional frame analysis, and AI metadata. The local NeMo bundle is currently CPU-only; mandatory GPU support is not complete.
-- **Explicit provider costs.** Local CPU transcription has no API charge. Current OpenRouter requests bill the user's OpenRouter account. Codex/ChatGPT-plan access is planned, not implemented, and is not covered by an OpenAI API key.
+- **Runs on your computer.** The current source checkout transcribes locally with NVIDIA Nemotron and calls OpenRouter for GLM clip planning, optional frame analysis, and AI metadata. The bundled NeMo runtime runs on the GPU through Vulkan.
+- **Explicit provider costs.** Local GPU transcription has no API charge. Current OpenRouter requests bill the user's OpenRouter account. Codex/ChatGPT-plan access is planned, not implemented, and is not covered by an OpenAI API key.
 - **Captions that look native.** Nine styles (Viral, Hormozi, Bold, Clean, Minimal, Fire, Glow, Neon, Karaoke), each with a live preview before you render.
 - **MIT licensed.** Fork it, change it, ship it.
 
@@ -33,7 +33,7 @@
 ```
  Source video ──▶ Download ──▶ Transcribe ──▶ Find moments ──▶ Render
  (file or link)    yt-dlp      Local Nemotron    GLM 5.3 Flash     FFmpeg
-                               (CPU-only now)    via OpenRouter    crop, captions
+                               (local, GPU)      via OpenRouter    crop, captions
 ```
 
 Every run gets its own folder. The **Library** shows completed clips with virality scores, timecodes and tags. **Jobs** shows what is running or queued right now and earlier runs. Completed runs open their clips, and some failed runs can run again. You can optionally connect social accounts through Zernio to publish or schedule a selected clip.
@@ -78,7 +78,7 @@ Live channels, Twitch clips, collections, subscriber-only videos and deleted or 
 
 The canonical working checkout is `Y:\ProjectsAI\bridgeclip`. There is no second rollback checkout: the former `D:\!!!\Documents\ChatGPT\LinkedIn\bridgeclip` was removed, so recovery goes through `origin` = `aMoonshine/bridgeclip`. Start the canonical checkout with `start-windows.cmd`.
 
-The launcher uses project-local Node.js, Python, FFmpeg/ffprobe, yt-dlp, NeMo-Speech.cpp, and the existing model under `engine-bin\`. The current engine defaults to local Nemotron transcription, but the local NeMo bundle reports no compiled CUDA/Vulkan backend. Clip planning and optional layout vision remain hardcoded to `z-ai/glm-5.3-flash` through OpenRouter. There is no current Codex adapter, provider/model picker, or explicit GPU-device control.
+The launcher uses project-local Node.js, Python, FFmpeg/ffprobe, yt-dlp, NeMo-Speech.cpp, and the existing model under `engine-bin\`. The engine defaults to local Nemotron transcription, and the installed NeMo bundle reports a compiled Vulkan backend, so inference runs on the GPU. `TRANSCRIPTION_DEVICE` can pin a device; `auto` is the default. Clip planning and optional layout vision remain hardcoded to `z-ai/glm-5.3-flash` through OpenRouter. There is no current Codex adapter or provider/model picker.
 
 The large runtime files, model, `node_modules\`, and Python virtual environment are excluded from Git. Recreate the venv at the canonical path. See [Portable Windows](docs/PORTABLE_WINDOWS.md) for exact recreation, system-check, and rollback commands.
 
@@ -121,7 +121,7 @@ If a download still fails, BridgeClip checks whether the host advertises IPv6 th
 ### First run and troubleshooting
 
 1. Add your OpenRouter key in the setup card. A saved key is never shown again; paste a new one to replace it or choose **Remove key** in Settings.
-2. Run **Settings → System check**. The current NeMo doctor result is CPU-only even when this check succeeds.
+2. Run **Settings → System check**. This should report the Vulkan GPU alongside the CPU.
 3. Choose a local video or public video link, select clip settings, and start the job. Optional AI vision can add OpenRouter cost.
 4. If a run fails, use the in-app error and System check first. Logs intentionally omit raw provider responses and private source details.
 

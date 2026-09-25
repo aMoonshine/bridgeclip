@@ -28,16 +28,16 @@ Status terms in this document are deliberate:
 
 Current product facts:
 
-- `nemo-speech doctor --json` reports NeMo-Speech `0.1.0` with `accelerator_available=false`, `accelerator_compiled=false`, and no CUDA, Metal, or Vulkan backend. The local ASR path exists, but the local bundle is **not GPU-complete**.
-- The current engine defaults to local Nemotron transcription. Clip planning and optional layout analysis are hardcoded to OpenRouter GLM behavior; explicit provider/model selection and Codex access are not implemented.
+- `nemo-speech doctor --json` reports NeMo-Speech `0.1.0` with `accelerator_available=true`, `accelerator_compiled=true`, and `backend_vulkan=true`, with `Vulkan0 / NVIDIA GeForce RTX 3090` present. This supersedes the CPU-only reading in the Todo 4 and Todo 5 evidence files, which remain as the historical record of that earlier baseline.
+- The current engine defaults to local Nemotron transcription on the GPU. Clip planning and optional layout analysis are hardcoded to OpenRouter GLM behavior; explicit provider/model selection and Codex access are not implemented.
 - Settings and application state still use Electron per-user `userData`. A project-local portable `data\` root, portable drafts, recent projects, crash recovery, and non-destructive history clearing are not implemented.
-- The canonical launcher is verified for this source checkout. Windows installer/update distribution and the required GPU-complete resource package are not release-ready.
+- The canonical launcher is verified for this source checkout. Windows installer/update distribution and an automated GPU resource package are not release-ready.
 - The public-draft manifest still omits the four new documentation files and the tracked `start-windows.cmd`/`start-windows.ps1` launchers; public export is blocked until Todo 13 updates and reviews it.
-- Todo 5 baseline is recorded with typecheck, lint, bridge, renderer, and build passing; known failures are Windows symlink/permission/test-harness issues, and the locked Python environment does not include pytest. Evidence: `.omo/evidence/bridgeclip-ssd-portable-ai/task-5-baseline.md`.
+- Todo 5 baseline is recorded with typecheck, lint, bridge, renderer, and build passing; known failures are Windows symlink/permission/test-harness issues. `pytest` has since been installed into the venv as a local development dependency, so the Python suite now runs. Evidence: `.omo/evidence/bridgeclip-ssd-portable-ai/task-5-baseline.md`.
 
 ## Owner decisions
 
-- GPU-capable local ASR is mandatory. CPU-only execution is diagnostic and cannot close GPU acceptance or a release.
+- GPU-capable local ASR is mandatory and is now met. CPU-only execution remains diagnostic and cannot satisfy a release gate.
 - Codex means official app-server-managed ChatGPT-plan access, with Windows Keyring credential ownership. Raw ChatGPT/Codex tokens and copied `auth.json` files are forbidden.
 - OpenRouter remains a separate explicit provider. It is not an authentication or billing fallback for Codex.
 - No provider/model call or model download may be initiated autonomously. Network discovery and generation require explicit user action.
@@ -47,16 +47,23 @@ Current product facts:
 - A VPN profile that carries a ULA IPv6 address together with a `::/0` route is treated as a host misconfiguration, not an app defect. The owner's `comp2.conf` is corrected; a corrected profile is required for the tunnel itself to work.
 
 ## Current verified state (2026-09-25 network work)
-
 - Source validation accepts a host that resolves to a mix of public and unroutable answers, and refuses it only when every answer is private. Verified against `www.youtube.com` and `i.ytimg.com` through a live tunnel.
 - Requests are pinned to an IPv4 address when a name is dual-stack, and to the only available family otherwise. A test asserts an IPv6-only host still uses IPv6.
 - A download that fails while the host advertises unreachable IPv6 now reports `download.ipv6_unreachable` with a VPN-specific message and hint, instead of the generic "video could not be downloaded".
-- `pytest` is now installed in `engine\.venv` as a local development dependency; `engine/requirements.lock` is unchanged. The Python suite runs 397 tests.
+- `pytest` is now installed in `engine\.venv` as a local development dependency; `engine/requirements.lock` is unchanged. The Python suite runs 411 tests.
 - Regression baseline on this checkout is unchanged by the network work: main 31 pass / 9 fail, renderer 22 pass, zernio 109 pass / 6 fail, release 9 pass / 2 fail, bridge 24 pass, typecheck, lint, and build pass. The recorded failures are pre-existing Windows file-mode and symlink assertions.
+
+## Current verified state (2026-09-25 GPU runtime)
+
+- The installed NeMo-Speech.cpp `0.1.0` bundle is the official Vulkan archive from `NVIDIA/NeMo-Speech.cpp`, verified against the published digest `b5e7b04a...`. It replaces the CPU-only bundle, which was removed after verification along with the downloaded archive.
+- `nemo-speech doctor --json` reports `accelerator_compiled=true` and `backend_vulkan=true`, with `Vulkan0 / NVIDIA GeForce RTX 3090` as device 0.
+- GPU transcription on `engine\tests\fixtures\nemo-jfk.wav` returns the expected text, 22 word objects, and monotonic timestamps. `--device auto`, which is what the app sends, resolves to `backend=Vulkan0`. On this machine the same clip took 1.95 s on `Vulkan0` against 3.38 s on `cpu`.
+- The model is untouched: `3FC991D3BADAD7277C11030A7519832CDDAF2057AAFED6D4B25147E953A070B1` before and after. No model was downloaded at any point.
+- `TRANSCRIPTION_DEVICE` is a validated setting. It accepts `auto`, `cpu`, `cuda`, `vulkan`, `metal`, `gpu`, and an indexed form such as `vulkan:0`; anything else is rejected before it can reach a subprocess argv. Both local call sites forward it.
+- A Vulkan backend DLL from an unrelated application on this machine was evaluated and rejected: its ggml generation does not match this runtime. Backends must come from the matching official archive.
 
 ## Planned / not yet implemented
 
-- GPU CUDA/Vulkan NeMo runtime and real GPU transcription fixture.
 - Versioned `local-nemo`, `openrouter`, and `codex` provider/model-role contract.
 - Official Codex login, account status, logout, and safe model inventory.
 - Explicit local/OpenRouter/Codex model discovery without downloads or generation.

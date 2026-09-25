@@ -115,7 +115,7 @@ Your next move: run the plan in a worker session with `$start-work bridgeclip-ss
   QA scenarios (name the exact tool + invocation): happy — the command set completes with recorded results and no paid calls, evidence `.omo/evidence/bridgeclip-ssd-portable-ai/task-5-baseline.md`; failure — stop before feature edits if the baseline cannot be reproduced, preserving the exact failing command and log.
   Commit: N | test(baseline): record pre-change verification; no code changes
 
-- [ ] 6. Install and verify a mandatory CUDA/Vulkan NeMo GPU runtime
+- [x] 6. Install and verify a mandatory CUDA/Vulkan NeMo GPU runtime
   What to do / Must NOT do: Stage an official NeMo-Speech.cpp v0.1.0 CUDA or Vulkan build compatible with the RTX 3090/driver, preserve the existing Nemotron GGUF without downloading another model, add explicit device selection to both local transcription call sites, and prove a real GPU transcription; CPU-only success cannot close this task.
   Parallelization: Wave 2 | Blocked by: 2, 4 | Blocks: 16
   References (executor has NO interview context - be exhaustive): `engine/clip_engine/config.py:657-661`; `engine/clip_engine/services/transcription_service.py:633-689,844-848`; `src/main/automation-metadata.ts:58-105`; `src/main/pipeline-runner.ts:413-420`; `engine/tests/test_transcription.py:104-121`; `engine-bin/nemo-speech/bin`; official NeMo-Speech.cpp v0.1.0 release/docs; source fixture `test_files/asr/wav/test/jfk.wav` from the official NeMo-Speech.cpp checkout.
