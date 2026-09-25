@@ -7,6 +7,18 @@ import { promisify } from 'util'
 const execFileAsync = promisify(execFile)
 
 /**
+ * Root of the `engine-bin` directory holding the bundled media tools, the
+ * NeMo-Speech.cpp runtime and the local ASR model. It sits beside the Python
+ * `engine` package, so callers that need the runtime should use this rather
+ * than reconstructing the path.
+ */
+export function resolveEngineBinPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'engine-bin')
+    : join(__dirname, '..', '..', 'engine-bin')
+}
+
+/**
  * Resolve ffmpeg / ffprobe / yt-dlp. Prefer staged FFmpeg tools in development
  * and bundled tools in packaged builds. The clipping engine must use the same
  * FFmpeg that passes the caption filter check.

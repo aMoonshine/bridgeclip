@@ -13,6 +13,7 @@ import type { ClipMediaInfo, PostClipRequest, PostClipResult, PostProgress, Post
 import type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
 import type { Automation, AutomationUpdate, AutomationTikTokReview, AutomationTikTokReviewUpdate } from '../shared/automations'
 import type { OpenRouterCatalog } from '../shared/openrouter-models'
+import type { NemoRuntimeInfo } from '../shared/nemo-runtime'
 import type { UpdateState } from '../shared/updates'
 
 export interface ClipSettings {
@@ -21,6 +22,8 @@ export interface ClipSettings {
   outputDirectory: string
   pythonPath: string
   customVocabulary: string
+  transcriptionBackend: 'openrouter' | 'nemotron'
+  transcriptionDevice: string
 }
 
 export type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
@@ -144,6 +147,8 @@ export interface BridgeClipAPI {
   system: {
     isPackaged: () => Promise<boolean>
     checkTools: () => Promise<ToolStatus>
+    /** What the local NeMo-Speech runtime can do. No path or credential crosses. */
+    nemoRuntime: () => Promise<NemoRuntimeInfo>
   }
   diagnostics: {
     getLogPath: () => Promise<string>
@@ -246,7 +251,8 @@ const api: BridgeClipAPI = {
   },
   system: {
     isPackaged: () => ipcRenderer.invoke('system:isPackaged'),
-    checkTools: () => ipcRenderer.invoke('system:checkTools')
+    checkTools: () => ipcRenderer.invoke('system:checkTools'),
+    nemoRuntime: () => ipcRenderer.invoke('system:nemoRuntime')
   },
   diagnostics: {
     getLogPath: () => ipcRenderer.invoke('diagnostics:getLogPath'),

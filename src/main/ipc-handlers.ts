@@ -17,8 +17,9 @@ import { assertAbsolutePath, assertMediaPath, assertTrustedSender, authorizeMedi
 import { assertPublicWebUrl } from './network-policy'
 import { validateJobConfig } from './validation'
 import { getModelCatalog, resolveAdvancedModels } from './openrouter-models'
+import { readNemoRuntime } from './nemo-runtime'
 import { randomUUID } from 'crypto'
-import { resolveBinary, supportsCaptionFilter } from './tools'
+import { resolveBinary, resolveEngineBinPath, supportsCaptionFilter } from './tools'
 import { approveAutomationTikTokReview, prepareAutomationTikTokReview, addAutomationContent, addLibraryClipsToAutomation, createAutomation, deleteAutomation, isAutomationMedia, listAutomations, removeAutomationContent, runAutomation, updateAutomation, updateAutomationContent } from './automations'
 import {
   cancelZernioConnect,
@@ -352,6 +353,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
   handle('system:isPackaged', () => {
     return app.isPackaged
+  })
+
+  handle('system:nemoRuntime', async () => {
+    return readNemoRuntime(resolveEngineBinPath())
   })
 
   handle('system:checkTools', async () => {
