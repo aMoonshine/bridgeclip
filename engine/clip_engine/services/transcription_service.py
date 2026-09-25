@@ -1,4 +1,4 @@
-"""
+﻿"""
 Transcription Service - Word-timed audio transcription with OpenRouter model recovery.
 """
 
@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from clip_engine.config import get_settings
+from clip_engine.config import NEMOTRON_FILENAME, NEMOTRON_MODEL, get_settings
 from clip_engine.services.media_process import MEDIA_INPUT_OPTIONS, run_media
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,9 @@ TRANSCRIPTION_CHUNK_SECONDS = 300
 TRANSCRIPTION_RANGE_PAD_SECONDS = 5.0
 MAX_TRANSCRIPTION_AUDIO_BYTES = 12 * 1024 * 1024
 MAX_TRANSCRIPTION_RESPONSE_BYTES = 4 * 1024 * 1024
+# A local chunk is a few minutes of audio, so this is a backstop rather than a
+# normal wait. The hosted path retries instead of giving up on a slow request.
+LOCAL_TRANSCRIPTION_TIMEOUT_SECONDS = 900
 MAI_PRICE_PER_HOUR = 0.10
 WHISPER_TURBO_PRICE_PER_HOUR = 0.0108
 WHISPER_V3_PRICE_PER_HOUR = 0.0288
@@ -102,7 +105,7 @@ class TranscriptionResult:
 
 
 # Sentence-ending punctuation marks
-SENTENCE_END_PUNCTUATION = {'.', '!', '?', '。', '！', '？'}
+SENTENCE_END_PUNCTUATION = {'.', '!', '?', 'гЂ‚', 'пјЃ', 'пјџ'}
 
 # The planner sees times rounded to 0.1 s, so a clip end it copies from a
 # transcript line can land up to 50 ms after the real sentence end. Treat a
@@ -569,7 +572,10 @@ class TranscriptionService:
         """
         if not os.path.isfile(audio_path):
             raise TranscriptionError("Audio file not found", reason="audio_missing")
-        if not self.settings.openrouter_api_key:
+        local = self._local_transcription
+        # On-device transcription needs no account and costs nothing. Planning
+        # still uses OpenRouter, so the key is only required for a remote run.
+        if not local and not self.settings.openrouter_api_key:
             raise TranscriptionProviderError("auth")
         if translate_to_english:
             raise TranscriptionError("Audio translation is not supported", reason="translation_unsupported")
@@ -581,7 +587,11 @@ class TranscriptionService:
         # Keep the recovered model for the rest of this run. Retrying an
         # unavailable model for each chunk causes repeated failures and costs.
         models = list(dict.fromkeys((primary, BUDGET_FALLBACK_MODEL, TRANSCRIPTION_MODEL, BUDGET_TRANSCRIPTION_MODEL)))
-        if getattr(self.settings, "clipping_mode", "quality") == "advanced":
+        if local:
+            # There is no provider to fall back to, and a different model would
+            # have to come from the same local bundle anyway.
+            models = [primary]
+        elif getattr(self.settings, "clipping_mode", "quality") == "advanced":
             models = [primary]
         chunk_count = max(1, math.ceil(duration / TRANSCRIPTION_CHUNK_SECONDS))
         with tempfile.TemporaryDirectory(prefix="clip-transcribe-", dir=os.path.dirname(audio_path)) as work:
@@ -622,6 +632,83 @@ class TranscriptionService:
             api_costs=costs,
         )
 
+    @property
+    def _local_transcription(self) -> bool:
+        """True when this run should use the on-device runtime.
+
+        Read through getattr because a caller may supply a settings stand-in that
+        predates the local backend, and that must keep meaning "use OpenRouter".
+        """
+        return getattr(self.settings, "transcription_backend", "openrouter") == "nemotron"
+
+    def _nemotron_runtime(self) -> tuple[str, str]:
+        """Resolve the bundled NeMo-Speech.cpp runtime and model for this project."""
+        root = Path(__file__).resolve().parents[3]
+        executable = self.settings.nemo_speech_path or str(
+            root / "engine-bin" / "nemo-speech" / "bin" / ("nemo-speech.exe" if os.name == "nt" else "nemo-speech")
+        )
+        model = self.settings.nemotron_model_path or str(root / "engine-bin" / "models" / NEMOTRON_FILENAME)
+        if not Path(executable).is_file() or not Path(model).is_file():
+            raise TranscriptionError("Local transcription model or runtime is unavailable", reason="local_unavailable")
+        return executable, model
+
+    async def _request_nemotron_transcript(
+        self, audio_path: str, language: Optional[str], keyterms: Optional[list[str]]
+    ) -> dict:
+        """Run on-device inference. Never expose CLI output or local paths in errors."""
+        executable, model = self._nemotron_runtime()
+        locale = {"ru": "ru-RU", "en": "en-US", "uk": "uk-UA"}.get(language or "auto", language or "auto")
+        command = [executable, "transcribe", audio_path, "--model", model,
+                   "--language", locale, "--format", "json"]
+        # "auto" lets the runtime pick the GPU when a CUDA or Vulkan build is
+        # installed. The value is validated in settings, so only a documented
+        # device name can reach argv here.
+        command.extend(("--device", self.settings.transcription_device or "auto"))
+        for term in normalize_keyterms(keyterms)[:20]:
+            command.extend(("--speech-context", term))
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run, command, capture_output=True, timeout=LOCAL_TRANSCRIPTION_TIMEOUT_SECONDS, check=False
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            raise TranscriptionError("Local transcription failed", reason="local_failed") from None
+        if result.returncode != 0 or len(result.stdout) > MAX_TRANSCRIPTION_RESPONSE_BYTES:
+            raise TranscriptionError("Local transcription failed", reason="local_failed")
+        try:
+            return json.loads(result.stdout)
+        except (ValueError, UnicodeError):
+            raise TranscriptionError("Local transcription failed", reason="local_failed") from None
+
+    @staticmethod
+    def _local_response(response: dict) -> dict:
+        """Reshape the runtime's JSON into the shape the shared parser expects.
+
+        Word and segment handling is identical to the hosted path, so the local
+        response is normalised rather than parsed twice. Captions depend on the
+        timestamps being validated the same way either way.
+        """
+        words = []
+        for word in response.get("words") or []:
+            if isinstance(word, dict):
+                words.append({"word": word.get("word"), "start": word.get("start"), "end": word.get("end")})
+        languages = response.get("languages")
+        language = languages[0] if isinstance(languages, list) and languages and isinstance(languages[0], str) else None
+        return {"text": response.get("text"), "words": words, "language": language}
+
+    async def _transcribe_chunk_local(
+        self, path: str, language: Optional[str], keyterms: Optional[list[str]], duration: float
+    ) -> TranscriptionResult:
+        """Transcribe one chunk on this machine. There is no provider to retry."""
+        response = await self._request_nemotron_transcript(path, language, keyterms)
+        normalized = self._local_response(response)
+        if not isinstance(normalized.get("text"), str) or not normalized["words"]:
+            raise TranscriptionError("Local transcription response had no words", reason="local_failed")
+        return self._parse_openrouter_response(
+            normalized, duration, NEMOTRON_MODEL,
+            # On-device inference is free, and that is known rather than unknown.
+            TranscriptionApiCosts(model=NEMOTRON_MODEL, audio_duration_seconds=duration, estimated_cost_usd=0.0),
+        )
+
     async def _transcribe_chunk(
         self, path: str, language: Optional[str], keyterms: Optional[list[str]],
         duration: float, models: list[str], costs: TranscriptionApiCosts,
@@ -632,6 +719,8 @@ class TranscriptionService:
         errors get one cancellable retry per model, then another timed-word
         model. A long Retry-After skips this model instead of retrying early.
         """
+        if self._local_transcription:
+            return await self._transcribe_chunk_local(path, language, keyterms, duration)
         while models:
             model = models[0]
             name = TRANSCRIPTION_MODEL_NAMES.get(model, "transcription model")
@@ -768,7 +857,10 @@ class TranscriptionService:
         except httpx.HTTPError:
             raise TranscriptionProviderError("network") from None
 
-    def _parse_openrouter_response(self, response: dict, audio_duration: float, model: Optional[str] = None) -> TranscriptionResult:
+    def _parse_openrouter_response(
+        self, response: dict, audio_duration: float, model: Optional[str] = None,
+        costs: Optional[TranscriptionApiCosts] = None,
+    ) -> TranscriptionResult:
         """Parse provider word timings without inventing timestamps."""
         model = model or getattr(getattr(self, "settings", None), "transcription_model", TRANSCRIPTION_MODEL)
         text = response.get("text")
@@ -808,7 +900,7 @@ class TranscriptionService:
             language=response.get("language") if isinstance(response.get("language"), str) else None,
             duration_seconds=audio_duration,
             model=model,
-            api_costs=self._response_cost(response, audio_duration, model),
+            api_costs=costs if costs is not None else self._response_cost(response, audio_duration, model),
         )
 
 
