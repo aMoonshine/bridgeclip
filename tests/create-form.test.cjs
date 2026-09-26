@@ -107,6 +107,43 @@ test('speed survives navigation and another job, and appears in the submitted re
   } finally { useDraftStore.setState(original) }
 })
 
+test('switching clipping modes clears model overrides before another job', () => {
+  const { useDraftStore, buildJobRequest } = form.exports
+  const original = useDraftStore.getState()
+  try {
+    useDraftStore.setState({
+      source: 'https://example.com/video', clippingMode: 'advanced',
+      plannerModel: 'provider/paid-planner', transcriptionModel: 'provider/paid-speech'
+    })
+    useDraftStore.getState().update({ clippingMode: 'quality' })
+    const draft = useDraftStore.getState()
+    assert.equal(draft.plannerModel, '')
+    assert.equal(draft.transcriptionModel, '')
+    const request = buildJobRequest(draft, { start: null, end: null })
+    assert.equal(request.plannerModel, undefined)
+    assert.equal(request.transcriptionModel, undefined)
+  } finally { useDraftStore.setState(original) }
+})
+
+test('saved model choices load on the next launch', () => {
+  const prior = global.localStorage
+  global.localStorage = {
+    getItem: () => JSON.stringify({
+      clippingMode: 'advanced', plannerModel: 'provider/planner',
+      transcriptionModel: 'provider/speech'
+    })
+  }
+  try {
+    const fresh = { exports: {} }
+    new Function('module', 'exports', 'require', bundled)(fresh, fresh.exports, require)
+    const draft = fresh.exports.useDraftStore.getState()
+    assert.equal(draft.clippingMode, 'advanced')
+    assert.equal(draft.plannerModel, 'provider/planner')
+    assert.equal(draft.transcriptionModel, 'provider/speech')
+    assert.equal(draft.source, '')
+  } finally { global.localStorage = prior }
+})
+
 test('saved run speed is retained while invalid speed metadata is discarded', () => {
   assert.equal(parseJobOutput({ clips: [], metrics: { requested_settings: { video_speed: 1.5 } } }).metrics.requested_settings.video_speed, 1.5)
   for (const video_speed of ['2', null, Infinity, 0, 3]) {

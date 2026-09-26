@@ -21,9 +21,10 @@ RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 class OpenRouterError(Exception):
     """An OpenRouter request failed. `retryable` marks transient failures."""
 
-    def __init__(self, message: str, retryable: bool = False):
+    def __init__(self, message: str, retryable: bool = False, status_code: int | None = None):
         super().__init__(message)
         self.retryable = retryable
+        self.status_code = status_code
 
 
 def json_schema_format(name: str, schema: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +98,7 @@ async def chat_completion(
         raise OpenRouterError(
             f"OpenRouter API error ({status})",
             retryable=status in RETRYABLE_STATUS_CODES,
+            status_code=status,
         )
     try:
         body = json.loads(content)

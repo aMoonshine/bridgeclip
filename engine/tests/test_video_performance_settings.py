@@ -1,9 +1,12 @@
 """Source ceiling, encoder choice and clip concurrency."""
 
 import pytest
+import yt_dlp
+from types import SimpleNamespace
 
 from clip_engine.config import Settings
 from clip_engine.services.video_downloader import (YOUTUBE_FORMAT_SELECTORS,
+                                                   VideoDownloaderService,
                                                    height_capped_selectors)
 
 
@@ -29,6 +32,36 @@ def test_a_capped_selector_never_offers_more_than_the_ceiling():
         for selector in _ladder(cap):
             ceiling = int(selector.rsplit("<=", 1)[1].rstrip("]"))
             assert ceiling <= cap, (cap, selector)
+
+
+def test_ytdlp_never_selects_a_4k_stream_for_full_hd():
+    """Exercise yt-dlp's selector parser, including its slash fallback."""
+    formats = [
+        {"format_id": "v4k", "vcodec": "vp9", "acodec": "none", "height": 2160, "ext": "webm"},
+        {"format_id": "vhd", "vcodec": "vp9", "acodec": "none", "height": 1080, "ext": "webm"},
+        {"format_id": "audio", "vcodec": "none", "acodec": "opus", "ext": "webm"},
+    ]
+    for fmt in formats:
+        fmt["url"] = f"https://example.invalid/{fmt['format_id']}"
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        selected = list(ydl.build_format_selector(_ladder(1080)[0])({"formats": formats}))
+    video_heights = [
+        part["height"]
+        for choice in selected
+        for part in choice.get("requested_formats", [choice])
+        if part.get("vcodec") != "none"
+    ]
+    assert video_heights == [1080]
+
+
+@pytest.mark.parametrize("source_type", ["youtube", "twitch"])
+def test_every_host_download_selector_respects_full_hd(source_type):
+    downloader = VideoDownloaderService.__new__(VideoDownloaderService)
+    downloader.settings = SimpleNamespace(download_resolution="1080")
+    selectors = downloader._download_format_selectors(source_type)
+    assert selectors
+    assert all("[height<=1080]" in selector or "[height<=720]" in selector
+               for selector in selectors)
 
 
 def test_the_ladder_walks_down_before_switching_codec():

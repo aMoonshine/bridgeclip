@@ -30,6 +30,29 @@ def make_planner(**overrides) -> IntelligencePlannerService:
     return planner
 
 
+def test_a_missing_planner_model_keeps_its_404_diagnostic():
+    from clip_engine.error_policy import safe_failure_code, safe_processing_error
+
+    class Reply(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'{}'
+
+    async def exercise():
+        planner = make_planner(clipping_mode="advanced", planner_model="provider/missing")
+        async with httpx.AsyncClient(base_url="https://example.invalid", transport=httpx.MockTransport(
+            lambda _request: httpx.Response(404, stream=Reply())
+        )) as client:
+            planner._http_client = client
+            with pytest.raises(IntelligencePlanningError) as failure:
+                await planner._call_openrouter("provider/missing", [])
+        return failure.value
+
+    error = asyncio.run(exercise())
+    assert error.status_code == 404
+    assert safe_failure_code(error) == "planning.model_unavailable"
+    assert safe_processing_error(error) == "Planning model unavailable"
+
+
 def make_transcript(seconds: int = 300) -> TranscriptionResult:
     segments = []
     for start in range(0, seconds, 5):

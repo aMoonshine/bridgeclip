@@ -1014,7 +1014,8 @@ Do not overlap clips by more than 5 seconds."""
         try:
             return await chat_completion(client, payload)
         except OpenRouterError as e:
-            raise IntelligencePlanningError(str(e), retryable=e.retryable) from e
+            raise IntelligencePlanningError(str(e), retryable=e.retryable,
+                                            status_code=e.status_code) from e
 
     def _parse_clip_plan_response(self, response: dict) -> ClipPlanResponse:
         """Parse OpenRouter response into ClipPlanResponse."""
@@ -1490,9 +1491,11 @@ Do not overlap clips by more than 5 seconds."""
 class IntelligencePlanningError(Exception):
     """Exception raised when intelligence planning fails."""
 
-    def __init__(self, message: str, retryable: bool = False):
+    def __init__(self, message: str, retryable: bool = False,
+                 status_code: Optional[int] = None):
         super().__init__(message)
         self.retryable = retryable
+        self.status_code = status_code
 
 
 class VisualPlanningUnsupportedError(IntelligencePlanningError):

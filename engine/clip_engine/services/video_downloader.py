@@ -26,11 +26,12 @@ import boto3
 import yt_dlp
 from botocore.config import Config as BotocoreConfig
 
-from clip_engine.config import get_settings
+from clip_engine.config import DOWNLOAD_RESOLUTION_HEIGHTS, get_settings
 from clip_engine.error_policy import is_disk_full
 from clip_engine.network_policy import guarded_public_connections, resolve_public_destination
 from clip_engine.services.media_process import (guarded_ytdlp_children, run_media,
                                                 validate_video_dimensions, MediaProcessError)
+from clip_engine.services.source_cache import SourceCache, cache_key
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,14 @@ YOUTUBE_FORMAT_SELECTORS = [
     # mp4, up to 1080p), then any non-AV1 stream that already includes audio.
     "bv*[vcodec^=avc1]+ba[acodec^=mp4a]/b[vcodec!^=av01]",
 ]
+
+
+def height_capped_selectors(max_height: Optional[int]) -> list[str]:
+    """Return yt-dlp selectors that respect the requested source-height ceiling."""
+    if not max_height:
+        return list(YOUTUBE_FORMAT_SELECTORS)
+    rungs = sorted({h for h in (max_height, 1440, 1080, 720) if h <= max_height}, reverse=True)
+    return [f"{selector}[height<={height}]" for selector in YOUTUBE_FORMAT_SELECTORS for height in rungs]
 
 
 TWITCH_HOSTS = {"twitch.tv", "www.twitch.tv", "m.twitch.tv", "go.twitch.tv"}
@@ -147,6 +156,10 @@ class VideoDownloaderService:
     def __init__(self):
         self.settings = get_settings()
         self._s3_client: Optional[boto3.client] = None
+        self.source_cache = SourceCache(
+            getattr(self.settings, "source_cache_dir", None),
+            getattr(self.settings, "source_cache_budget_bytes", 0),
+        )
 
         # Log yt-dlp version for diagnostics.
         try:
@@ -158,6 +171,16 @@ class VideoDownloaderService:
 
         logger.info("YouTube proxy and native networking disabled for destination checks")
 
+    def _max_source_height(self) -> Optional[int]:
+        return DOWNLOAD_RESOLUTION_HEIGHTS.get(getattr(self.settings, "download_resolution", "source"))
+
+    def _download_format_selectors(self, source_type: VideoSourceType) -> list[str]:
+        ceiling = self._max_source_height()
+        if source_type == "twitch":
+            selector = "b[vcodec!^=av01]"
+            return [f"{selector}[height<={ceiling}]" if ceiling else selector]
+        return height_capped_selectors(ceiling)
+
     def _get_format_selector(self) -> str:
         """
         Returns the primary format selector: the highest-resolution non-AV1
@@ -166,7 +189,8 @@ class VideoDownloaderService:
         IMPORTANT: Excludes AV1 codec (vcodec=av01) because the bundled FFmpeg
         has no software AV1 decoder. H.264 (avc1) and VP9 decode everywhere.
         """
-        return YOUTUBE_FORMAT_SELECTORS[0]
+        ceiling = self._max_source_height()
+        return height_capped_selectors(ceiling)[0]
 
     def _build_ytdlp_opts(
         self,
@@ -398,6 +422,36 @@ class VideoDownloaderService:
                 f"allowed duration ({max_duration}s)"
             )
 
+        ceiling = self._max_source_height()
+        key = cache_key(url, source_type) if source_type in ("youtube", "twitch") else ""
+        if key:
+            cached = self.source_cache.lookup(
+                key,
+                expected_duration=metadata.duration_seconds,
+                min_height=ceiling,
+                max_height=ceiling,
+            )
+            if cached is not None:
+                cached_path, entry = cached
+                logger.info("Reusing cached source %s (%dp)", key, entry.height)
+                return DownloadResult(
+                    video_path=cached_path,
+                    metadata=VideoMetadata(
+                        title=metadata.title or entry.url,
+                        duration_seconds=metadata.duration_seconds or entry.duration_seconds,
+                        width=entry.width or metadata.width,
+                        height=entry.height or metadata.height,
+                        fps=metadata.fps,
+                        format_id=metadata.format_id,
+                        extractor=metadata.extractor,
+                        uploader=metadata.uploader,
+                        upload_date=metadata.upload_date,
+                        source_type=source_type,
+                    ),
+                    file_size_bytes=entry.bytes,
+                    source_type=source_type,
+                )
+
         logger.info("Downloading video from %s", source_type)
         def check_progress(progress: dict) -> None:
             if time.monotonic() > deadline:
@@ -418,7 +472,7 @@ class VideoDownloaderService:
 
         # Highest available quality first; see YOUTUBE_FORMAT_SELECTORS.
         # CRITICAL: All selectors MUST exclude AV1 (the bundled FFmpeg can't decode it).
-        format_selectors = ["b[vcodec!^=av01]"] if source_type == "twitch" else YOUTUBE_FORMAT_SELECTORS
+        format_selectors = self._download_format_selectors(source_type)
 
         # Run download in thread pool to not block event loop
         loop = asyncio.get_event_loop()
@@ -555,6 +609,17 @@ class VideoDownloaderService:
         actual_metadata.source_type = source_type
 
         logger.info(f"Actual video dimensions: {actual_metadata.width}x{actual_metadata.height} @ {actual_metadata.fps}fps")
+
+        if key and actual_metadata.height > 0:
+            try:
+                self.source_cache.store(
+                    key=key, url=url, source_type=source_type, path=output_path,
+                    width=actual_metadata.width, height=actual_metadata.height,
+                    duration_seconds=actual_metadata.duration_seconds,
+                    title=actual_metadata.title or "",
+                )
+            except Exception as error:  # noqa: BLE001 - a cache failure must not fail a good download
+                logger.warning("Could not cache downloaded source: %s", error)
 
         return DownloadResult(
             video_path=output_path,

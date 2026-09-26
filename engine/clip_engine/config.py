@@ -13,6 +13,9 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REASONING_EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh")
+DOWNLOAD_RESOLUTIONS = ("source", "2160", "1440", "1080", "720")
+DOWNLOAD_RESOLUTION_HEIGHTS = {"2160": 2160, "1440": 1440, "1080": 1080, "720": 720}
+DEFAULT_SOURCE_CACHE_BUDGET_BYTES = 20 * 1000 ** 3
 
 
 # ============================================================
@@ -628,6 +631,8 @@ class Settings(BaseSettings):
     # Performance tuning (configurable for ECS scaling)
     max_workers: int = 4  # Max concurrent jobs (set to vCPU count for optimal performance)
     max_render_workers: int = 2  # Max concurrent FFmpeg render processes (reduced for 8GB Fargate)
+    render_concurrency: Optional[int] = None
+    download_resolution: str = "source"
 
     # Fargate optimization mode (for 4 vCPU / 8 GB RAM containers)
     # When True, applies memory-conservative settings to prevent OOM on long videos
@@ -666,6 +671,14 @@ class Settings(BaseSettings):
     planner_input_price: Optional[float] = None
     planner_output_price: Optional[float] = None
     transcription_diarize: bool = True
+
+    @field_validator("download_resolution")
+    @classmethod
+    def _validate_download_resolution(cls, value: str) -> str:
+        resolution = (value or "").strip().lower() or "source"
+        if resolution not in DOWNLOAD_RESOLUTIONS:
+            raise ValueError(f"DOWNLOAD_RESOLUTION must be one of {', '.join(DOWNLOAD_RESOLUTIONS)}")
+        return resolution
 
     @field_validator("planner_reasoning_effort", "layout_vision_reasoning_effort")
     @classmethod
@@ -706,6 +719,8 @@ class Settings(BaseSettings):
 
     @property
     def max_concurrent_renders(self) -> int:
+        if self.render_concurrency:
+            return self.render_concurrency
         # Desktop (local mode): scale with cores; each render keeps ~6 busy.
         # Fargate mode: sequential renders to avoid 100% CPU spikes.
         # Normal mode: use configured value (default 2).
@@ -741,6 +756,19 @@ class Settings(BaseSettings):
     @property
     def temp_directory(self) -> str:
         return os.environ["BRIDGECLIP_WORK_ROOT"]
+
+    @property
+    def source_cache_dir(self) -> Optional[str]:
+        return os.environ.get("BRIDGECLIP_SOURCE_CACHE") or None
+
+    @property
+    def source_cache_budget_bytes(self) -> int:
+        raw = os.environ.get("SOURCE_CACHE_BUDGET_BYTES")
+        try:
+            value = int(raw) if raw else DEFAULT_SOURCE_CACHE_BUDGET_BYTES
+        except (TypeError, ValueError):
+            return DEFAULT_SOURCE_CACHE_BUDGET_BYTES
+        return value if value >= 0 else DEFAULT_SOURCE_CACHE_BUDGET_BYTES
 
     @property
     def workspace_root(self) -> str:

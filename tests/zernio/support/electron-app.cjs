@@ -25,19 +25,32 @@ function playwright() {
 }
 
 /**
- * Production-builds the app into `appDir/out` and makes `appDir` launchable
- * (package.json + a node_modules link for externalised dependencies).
+ * Production-builds the app into `appDir/out` and makes `appDir` launchable.
+ * A scratch app lives under the checkout so Node can find externalised
+ * dependencies in the checkout's node_modules without a directory junction.
  */
 function buildApp(appDir = process.env.BRIDGECLIP_E2E_APP_DIR || path.join(os.tmpdir(), 'bridgeclip-e2e-app'), { skipBuild = process.env.BRIDGECLIP_E2E_SKIP_BUILD === '1' } = {}) {
+  const relative = path.relative(ROOT, path.resolve(appDir))
+  const outsideCheckout = relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)
+  if (!skipBuild && outsideCheckout) {
+    appDir = fs.mkdtempSync(path.join(ROOT, '.bridgeclip-e2e-app-'))
+    const generated = appDir
+    process.on('exit', () => {
+      try {
+        const actual = fs.realpathSync(generated)
+        if (actual.startsWith(ROOT + path.sep) && !fs.lstatSync(generated).isSymbolicLink()) {
+          fs.rmSync(generated, { recursive: true, force: true })
+        }
+      } catch { /* Leave an interrupted test build for manual cleanup. */ }
+    })
+  }
   fs.mkdirSync(appDir, { recursive: true })
   if (!skipBuild || !fs.existsSync(path.join(appDir, 'out/main/index.js'))) {
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
-    execFileSync(npx, ['electron-vite', 'build', '--outDir', path.join(appDir, 'out')], { cwd: ROOT, stdio: 'inherit' })
+    const viteCli = path.join(ROOT, 'node_modules', 'electron-vite', 'bin', 'electron-vite.js')
+    execFileSync(process.execPath, [viteCli, 'build', '--outDir', path.join(appDir, 'out')], { cwd: ROOT, stdio: 'inherit' })
   }
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
   fs.writeFileSync(path.join(appDir, 'package.json'), JSON.stringify({ name: pkg.name, productName: pkg.productName, version: pkg.version, main: 'out/main/index.js' }, null, 2))
-  const modules = path.join(appDir, 'node_modules')
-  if (!fs.existsSync(modules)) fs.symlinkSync(path.join(ROOT, 'node_modules'), modules, 'junction')
   return appDir
 }
 

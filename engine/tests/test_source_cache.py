@@ -1,9 +1,14 @@
 """Reuse of a downloaded source between runs."""
 
 import os
+import asyncio
+from types import SimpleNamespace
+
+import pytest
 
 from clip_engine.services.source_cache import (DURATION_TOLERANCE_SECONDS,
                                                CacheEntry, SourceCache, cache_key)
+from clip_engine.services.video_downloader import VideoDownloaderService, VideoMetadata
 
 TMP_CACHE = os.environ.get('TEMP', '/tmp') + '/bridgeclip-source-cache-test'
 YOUTUBE = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -89,6 +94,37 @@ def test_a_source_at_or_above_the_requested_height_is_reused(tmp_path):
     key = cache_key(YOUTUBE, "youtube")
     cache.store(key, YOUTUBE, "youtube", _media(tmp_path), 3840, 2160, 10.0)
     assert cache.lookup(key, expected_duration=10.0, min_height=1080) is not None
+
+
+def test_a_cached_4k_source_does_not_satisfy_a_full_hd_ceiling(tmp_path):
+    cache = SourceCache(str(tmp_path))
+    key = cache_key(YOUTUBE, "youtube")
+    cache.store(key, YOUTUBE, "youtube", _media(tmp_path), 3840, 2160, 10.0)
+
+    assert cache.lookup(key, expected_duration=10.0,
+                        min_height=1080, max_height=1080) is None
+
+
+def test_downloader_skips_a_4k_cache_entry_when_full_hd_is_selected(tmp_path):
+    cache = SourceCache(str(tmp_path))
+    cache.store(cache_key(YOUTUBE, "youtube"), YOUTUBE, "youtube",
+                _media(tmp_path), 3840, 2160, 10.0)
+    downloader = VideoDownloaderService.__new__(VideoDownloaderService)
+    downloader.settings = SimpleNamespace(download_resolution="1080", max_download_duration_seconds=60)
+    downloader.source_cache = cache
+    metadata = VideoMetadata("Video", 10.0, 3840, 2160, 30.0, "4k", "youtube")
+    downloader._get_video_info = lambda *args, **kwargs: asyncio.sleep(0, result=metadata)
+
+    class DownloadStarted(Exception):
+        pass
+
+    def mark_download_started(_source_type):
+        raise DownloadStarted
+
+    downloader._download_format_selectors = mark_download_started
+    with pytest.raises(DownloadStarted):
+        asyncio.run(downloader._download_from_youtube(
+            YOUTUBE, str(tmp_path / "new.mp4"), str(tmp_path)))
 
 
 def test_a_source_of_a_different_length_is_not_reused(tmp_path):

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isModelId } from '../../shared/openrouter-models'
 
 /** The Create wizard's steps, in order. */
 export type WizardStep = 'video' | 'format' | 'clips' | 'captions' | 'review'
@@ -64,6 +65,24 @@ const PERSISTED_FIELDS = [
   'includeCaptions', 'captionPreset'
 ] as const satisfies readonly (keyof ClipDraft)[]
 
+function validPreference(field: (typeof PERSISTED_FIELDS)[number], value: unknown): boolean {
+  switch (field) {
+    case 'clippingMode': return value === 'quality' || value === 'economy' || value === 'advanced'
+    case 'plannerModel': return value === '' || isModelId(value)
+    case 'transcriptionModel': return value === '' || value === LOCAL_TRANSCRIPTION_MODEL || isModelId(value)
+    case 'aspectRatio': return value === '9:16' || value === '16:9'
+    case 'layoutStyle': return value === 'auto' || value === 'fill' || value === 'fit'
+    case 'layoutVision':
+    case 'autoClipCount':
+    case 'includeCaptions': return typeof value === 'boolean'
+    case 'pacing': return value === 'tight' || value === 'natural'
+    case 'videoSpeed': return typeof value === 'number' && Number.isFinite(value) && value >= 0.5 && value <= 2
+    case 'durations': return Array.isArray(value) && value.length <= 7 && value.every((item) => typeof item === 'string' && item.length <= 20)
+    case 'maxClips': return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 50
+    case 'captionPreset': return typeof value === 'string' && value.length <= 40
+  }
+}
+
 /** The local model, chosen without an API key and free of provider cost. */
 export const LOCAL_TRANSCRIPTION_MODEL = 'local'
 
@@ -75,7 +94,8 @@ function readPersistedPreferences(): Partial<ClipDraft> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
     const out: Record<string, unknown> = {}
     for (const field of PERSISTED_FIELDS) {
-      if (field in parsed) out[field] = (parsed as Record<string, unknown>)[field]
+      const value = (parsed as Record<string, unknown>)[field]
+      if (validPreference(field, value)) out[field] = value
     }
     return out as Partial<ClipDraft>
   } catch {
@@ -85,7 +105,6 @@ function readPersistedPreferences(): Partial<ClipDraft> {
 }
 
 export const useDraftStore = create<DraftState>((set) => ({
-  ...readPersistedPreferences(),
   source: '',
   clippingMode: 'quality',
   plannerModel: '',
@@ -100,13 +119,18 @@ export const useDraftStore = create<DraftState>((set) => ({
   maxClips: 5,
   includeCaptions: true,
   captionPreset: 'pop',
+  ...readPersistedPreferences(),
   trimOpen: false,
   trimStart: '',
   trimEnd: '',
   step: 'video',
   started: null,
   update: (patch) => set((state) => {
-    const next = { ...state, ...patch }
+    const modeChanged = patch.clippingMode !== undefined && patch.clippingMode !== state.clippingMode
+    const applied = modeChanged
+      ? { ...patch, plannerModel: '', transcriptionModel: '' }
+      : patch
+    const next = { ...state, ...applied }
     try {
       const keep: Record<string, unknown> = {}
       for (const field of PERSISTED_FIELDS) {
@@ -117,7 +141,7 @@ export const useDraftStore = create<DraftState>((set) => ({
       // Persistence is a convenience; a full or blocked store must not break
       // editing the form.
     }
-    return patch
+    return applied
   }),
   setStep: (step) => set({ step }),
   clearSource: () => set({ source: '', trimStart: '', trimEnd: '' }),

@@ -27,7 +27,9 @@ test('Advanced models and export speed support keyboard selection, review and su
         { id: 'openai/gpt-4o-transcribe', name: 'OpenAI: GPT-4o Transcribe', architecture: { input_modalities: ['audio'], output_modalities: ['transcription'] } }
       ] : [
         { id: 'google/gemini-3.8-flash', name: 'Google: Gemini 3.8 Flash', architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
-          supported_parameters: ['structured_outputs'], context_length: 1048576, top_provider: { max_completion_tokens: 65536 }, pricing: { prompt: '0.00000075', completion: '0.00000375' } }
+          supported_parameters: ['structured_outputs'], context_length: 1048576, top_provider: { max_completion_tokens: 65536 }, pricing: { prompt: '0.00000075', completion: '0.00000375' } },
+        { id: 'google/gemini-3.8-pro', name: 'Google: Gemini 3.8 Pro', architecture: { input_modalities: ['text', 'image'], output_modalities: ['text'] },
+          supported_parameters: ['structured_outputs'], context_length: 1048576, top_provider: { max_completion_tokens: 65536 }, pricing: { prompt: '0.000001', completion: '0.000004' } }
       ] })
     }
     ipcMain.removeHandler('settings:load')
@@ -71,11 +73,25 @@ test('Advanced models and export speed support keyboard selection, review and su
   assert.equal(await speech.inputValue(), 'OpenAI: Whisper Large V3')
   const planner = page.getByRole('combobox', { name: 'Clip planning model', exact: true })
   await planner.fill('gemini')
-  await page.getByRole('option', { name: /Google: Gemini/ }).click()
+  await page.getByRole('option', { name: /Google: Gemini 3.8 Flash/ }).click()
+  await planner.fill('gemini pro')
+  await page.getByRole('option', { name: /Google: Gemini 3.8 Pro/ }).click()
+  assert.equal(await planner.inputValue(), 'Google: Gemini 3.8 Pro')
+  await planner.fill('gemini flash')
+  await page.getByRole('option', { name: /Google: Gemini 3.8 Flash/ }).click()
   assert.equal(await app.evaluate(() => globalThis.modelTest.submitted), null, 'Enter must select a model, not submit a job')
   await page.getByRole('radio', { name: /Economy/ }).click()
-  assert.equal(await page.getByRole('combobox').count(), 0)
+  assert.equal(await page.getByRole('combobox').count(), 2)
+  assert.equal(await speech.inputValue(), '')
+  assert.equal(await planner.inputValue(), '')
   await page.getByRole('radio', { name: /Advanced/ }).click()
+  assert.equal(await speech.inputValue(), '')
+  assert.equal(await planner.inputValue(), '')
+  await speech.fill('whisper large')
+  await speech.press('ArrowDown')
+  await speech.press('Enter')
+  await planner.fill('gemini flash')
+  await page.getByRole('option', { name: /Google: Gemini 3.8 Flash/ }).click()
   assert.equal(await speech.inputValue(), 'OpenAI: Whisper Large V3')
   assert.equal(await planner.inputValue(), 'Google: Gemini 3.8 Flash')
   await app.evaluate(() => { globalThis.modelTest.fail = true })

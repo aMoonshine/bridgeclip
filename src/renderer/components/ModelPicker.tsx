@@ -78,7 +78,13 @@ export function ModelPicker({ task, models, value, onChange, loading }: {
         </div>}
       </div>
       <div id={`${id}-help`} className="space-y-1 text-2xs text-ink-subtle">
-        {value && <p className="break-all font-mono">{value}</p>}
+        {value && <div className="flex items-start justify-between gap-2">
+          <p className="min-w-0 break-all font-mono">{value}</p>
+          <button type="button" className="shrink-0 text-accent hover:underline"
+            onClick={() => { onChange(''); setOpen(false); setQuery(''); setActive(-1) }}>
+            Use mode default
+          </button>
+        </div>}
         {selected?.unavailableReason && <p role="alert" className="text-danger">{selected.unavailableReason}</p>}
         {selected?.supportsReasoning && task === 'planning' && (
           <p role="alert" className="text-warning">

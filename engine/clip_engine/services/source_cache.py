@@ -158,6 +158,7 @@ class SourceCache:
         key: str,
         expected_duration: Optional[float] = None,
         min_height: Optional[int] = None,
+        max_height: Optional[int] = None,
     ) -> Optional[tuple[str, CacheEntry]]:
         """A stored source for this key, or None when it cannot be trusted."""
         if not self.enabled:
@@ -189,6 +190,13 @@ class SourceCache:
             logger.info(
                 "Cached source %s is %dp, below the requested %dp; downloading instead",
                 key, entry.height, min_height,
+            )
+            return None
+
+        if max_height and entry.height > max_height:
+            logger.info(
+                "Cached source %s is %dp, above the requested %dp ceiling; downloading instead",
+                key, entry.height, max_height,
             )
             return None
 
