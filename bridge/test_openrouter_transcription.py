@@ -17,9 +17,12 @@ spec = importlib.util.spec_from_file_location("mai_transcription_under_test", SO
 stt = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = stt
 with patch.dict(sys.modules, {
-    "clip_engine.config": types.SimpleNamespace(get_settings=lambda: types.SimpleNamespace(
-        openrouter_api_key="test-openrouter", transcription_diarize=True,
-        transcription_model="microsoft/mai-transcribe-2")),
+    "clip_engine.config": types.SimpleNamespace(
+        NEMOTRON_FILENAME="nemotron-3.5-asr-streaming-0.6b.q8_0.gguf",
+        NEMOTRON_MODEL="nvidia/nemotron-3.5-asr-streaming-0.6b",
+        get_settings=lambda: types.SimpleNamespace(
+            openrouter_api_key="test-openrouter", transcription_diarize=True,
+            transcription_model="microsoft/mai-transcribe-2")),
     "clip_engine.services.media_process": types.SimpleNamespace(
         MEDIA_INPUT_OPTIONS=[], run_media=lambda *args, **kwargs: None),
 }):
