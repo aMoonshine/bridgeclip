@@ -2,8 +2,11 @@ import toolkit from '@electron-toolkit/eslint-config-ts'
 
 export default toolkit.config(
   {
-    ignores: ['node_modules/**', 'out/**', 'dist/**', 'build/**', 'resources/**',
-      'engine/.venv/**', 'engine-venv/**', 'engine-bin/**']
+      ignores: ['node_modules/**', 'out/**', 'dist/**', 'build/**', 'resources/**',
+        'engine/.venv/**', 'engine-venv/**', 'engine-bin/**',
+        // Agent tooling that lives in the checkout: a generated code graph and
+        // the editor plugin that queries it. Neither is application code.
+        '.opencode/**', 'graphify-out/**']
   },
   toolkit.configs.recommended,
   {

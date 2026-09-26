@@ -60,6 +60,12 @@ export function formatUsd(amount: number): string {
   return `$${amount.toFixed(2)}`
 }
 
+/**
+ * Times are shown on a 24-hour clock.
+ *
+ * The locale stays English so month and weekday names do not change, but
+ * `hour12: false` is explicit: relying on the locale alone left AM/PM in the UI.
+ */
 export function formatDate(isoString: string): string {
   const date = new Date(isoString)
   return date.toLocaleDateString('en-US', {
@@ -67,15 +73,16 @@ export function formatDate(isoString: string): string {
     day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    hour12: false
   })
 }
 
-/** "Today, 3:42 PM", "Yesterday, 9:10 AM", "Sep 12", "Sep 12, 2025". */
+/** "Today, 15:42", "Yesterday, 9:10", "Sep 12", "Sep 12, 2025". */
 export function formatRelativeDate(isoString: string): string {
   const date = new Date(isoString)
   const now = new Date()
-  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
   const startOfDay = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const days = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000)
   if (days === 0) return `Today, ${time}`

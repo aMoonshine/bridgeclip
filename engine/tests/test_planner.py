@@ -163,12 +163,27 @@ class TestFinalizeClips:
 
 
 class TestParsing:
-    def test_empty_content_is_retryable(self):
+    def test_a_spent_output_budget_is_not_retried(self):
+        """Asking again cannot produce content the first answer did not have.
+
+        The attempt is billed in full, so retrying spent three times the money
+        for the same empty result.
+        """
         planner = make_planner()
         planner._current_transcript = []
         with pytest.raises(IntelligencePlanningError) as exc:
             planner._parse_clip_plan_response(completion(None, finish_reason="length"))
-        assert exc.value.retryable
+        assert not exc.value.retryable
+        # The message has to name the cause and the way out, not just the reason.
+        assert "output budget" in str(exc.value)
+        assert str(planner.settings.planner_max_output_tokens) in str(exc.value)
+
+    def test_an_empty_answer_for_another_reason_is_also_final(self):
+        planner = make_planner()
+        planner._current_transcript = []
+        with pytest.raises(IntelligencePlanningError) as exc:
+            planner._parse_clip_plan_response(completion(None, finish_reason="content_filter"))
+        assert not exc.value.retryable
 
     def test_malformed_json_is_retryable(self):
         planner = make_planner()

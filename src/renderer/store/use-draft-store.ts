@@ -50,7 +50,42 @@ interface DraftState extends ClipDraft {
   startAnother: () => void
 }
 
+/**
+ * Stays on disk between launches so the same models and framing do not have to
+ * be picked again every time the app is opened.
+ *
+ * The source video and the trim are deliberately excluded: those belong to one
+ * video, and restoring a stale path would offer a file the user has moved.
+ */
+const PERSISTED_KEY = 'bridgeclip.create-preferences'
+const PERSISTED_FIELDS = [
+  'clippingMode', 'plannerModel', 'transcriptionModel', 'aspectRatio', 'layoutStyle',
+  'layoutVision', 'pacing', 'videoSpeed', 'durations', 'autoClipCount', 'maxClips',
+  'includeCaptions', 'captionPreset'
+] as const satisfies readonly (keyof ClipDraft)[]
+
+/** The local model, chosen without an API key and free of provider cost. */
+export const LOCAL_TRANSCRIPTION_MODEL = 'local'
+
+function readPersistedPreferences(): Partial<ClipDraft> {
+  try {
+    const raw = localStorage.getItem(PERSISTED_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, unknown> = {}
+    for (const field of PERSISTED_FIELDS) {
+      if (field in parsed) out[field] = (parsed as Record<string, unknown>)[field]
+    }
+    return out as Partial<ClipDraft>
+  } catch {
+    // A corrupt or unreadable store must not stop the form from opening.
+    return {}
+  }
+}
+
 export const useDraftStore = create<DraftState>((set) => ({
+  ...readPersistedPreferences(),
   source: '',
   clippingMode: 'quality',
   plannerModel: '',
@@ -70,7 +105,20 @@ export const useDraftStore = create<DraftState>((set) => ({
   trimEnd: '',
   step: 'video',
   started: null,
-  update: (patch) => set(patch),
+  update: (patch) => set((state) => {
+    const next = { ...state, ...patch }
+    try {
+      const keep: Record<string, unknown> = {}
+      for (const field of PERSISTED_FIELDS) {
+        keep[field] = next[field]
+      }
+      localStorage.setItem(PERSISTED_KEY, JSON.stringify(keep))
+    } catch {
+      // Persistence is a convenience; a full or blocked store must not break
+      // editing the form.
+    }
+    return patch
+  }),
   setStep: (step) => set({ step }),
   clearSource: () => set({ source: '', trimStart: '', trimEnd: '' }),
   markStarted: (started) => set({ started }),

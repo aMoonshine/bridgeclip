@@ -80,6 +80,12 @@ export function ModelPicker({ task, models, value, onChange, loading }: {
       <div id={`${id}-help`} className="space-y-1 text-2xs text-ink-subtle">
         {value && <p className="break-all font-mono">{value}</p>}
         {selected?.unavailableReason && <p role="alert" className="text-danger">{selected.unavailableReason}</p>}
+        {selected?.supportsReasoning && task === 'planning' && (
+          <p role="alert" className="text-warning">
+            This model thinks before answering and can spend its whole output budget without returning a plan.
+            Planning may take minutes and the attempt is billed in full.
+          </p>
+        )}
         {price && <p>{price}. Provider prices may vary.</p>}
         {selected && task === 'planning' && <p>{selected.contextLength ? `${selected.contextLength.toLocaleString()} token context · ` : ''}{selected.supportsImages ? 'Supports silent-video planning' : 'Requires a video with speech'}</p>}
         {task === 'transcription' && <p>Word timestamps are required for captions and clip timing. Support varies by model and provider; an unsupported response stops the run.</p>}

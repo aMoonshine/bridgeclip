@@ -110,7 +110,7 @@ function defaultScheduleValue(): string {
 
 export function formatScheduled(iso: string, timeZone?: string | null): string {
   const at = Date.parse(iso)
-  const text = new Date(at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  const text = new Date(at).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
   const zone = timeZone && timeZone !== localTimeZone() ? ` (${zoneName(at, timeZone) || timeZone})` : ''
   return `${text}${zone}`
 }

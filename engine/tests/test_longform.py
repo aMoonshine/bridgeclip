@@ -285,7 +285,7 @@ def test_longform_render_end_to_end(tmp_path, monkeypatch):
     request = RenderRequest(
         video_path=src, output_path=str(tmp_path / "out" / "clip.mp4"),
         start_time_ms=0, end_time_ms=30_000, source_width=1440, source_height=1080,
-        transcript_segments=tr, include_captions=True, title_text="The Real Story",
+        transcript_segments=tr, include_captions=True,
         aspect_ratio="16:9", pacing="natural", longform=True,
         skip_ranges_ms=[(10_000, 20_000)], chapters=[(0, "Start"), (21_000, "After")],
     )

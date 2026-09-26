@@ -136,7 +136,7 @@ export function RunStats({ output, costs, videoSpeed }: RunStatsProps): React.JS
         index={3}
         icon={<CalendarClock />}
         label="Created"
-        value={created ? created.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '—'}
+        value={created ? created.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—'}
         sub={created && dayLabel(created)}
       />
     </div>

@@ -5,7 +5,7 @@ render_clip pipeline:
   1. Layout plan (9:16): per-shot framing from LayoutAnalyzer.
   2. Pacing: keep intervals from ClipEditor (tight pacing cuts dead air/fillers).
   3. One filter graph: video and audio edited on the same presentation clock.
-  4. Captions and title/banner overlays remapped onto the edited timeline.
+  4. Captions and the channel banner remapped onto the edited timeline.
 """
 
 import asyncio
@@ -48,7 +48,6 @@ from clip_engine.services.layout_renderer import (
     face_zones,
     measured_loudness_filter,
     per_shot_expr,
-    title_y,
 )
 from clip_engine.services.transcription_service import TranscriptSegment
 from clip_engine.services.video_speed import scaled_duration_ms, speed_video_filter, validate_video_speed
@@ -60,10 +59,6 @@ logger = logging.getLogger(__name__)
 # while enable_expr holds, with image_filter (e.g. alpha fades) applied first.
 Overlay = Union[tuple[str, str, str], tuple[str, str, str, str, str]]
 
-# Landscape title card: on screen for the opening seconds only (a title
-# pinned over a 15 minute episode just covers the video).
-LANDSCAPE_TITLE_SHOW_S = (0.4, 5.5)
-LANDSCAPE_TITLE_FADE_S = 0.4
 # Output frame rates a landscape render keeps from its source (higher is capped).
 MAX_OUTPUT_FPS = 60
 # Landscape H.264 bitrates (Mbps) by output height at 30 fps, after
@@ -91,7 +86,6 @@ class RenderRequest:
     include_captions: bool = True
     caption_style: Optional[CaptionStyle] = None
 
-    title_text: Optional[str] = None
     # Planner-chosen punch words highlighted in the captions.
     emphasis_words: list[str] = field(default_factory=list)
 
@@ -191,7 +185,52 @@ class RenderingService:
             self._local_cpu_encoder = next((name for name in ("libopenh264", "libx264") if re.search(rf"\b{name}\b", encoders)), None)
             if self._local_cpu_encoder is None:
                 raise RuntimeError("FFmpeg needs a CPU H.264 encoder (OpenH264 or x264)")
+            # Whether NVENC can be used at all. Listing the encoder is not enough:
+            # it also needs a working NVIDIA driver, so a real encode is probed
+            # once and a failure is remembered rather than retried per clip.
+            self._nvenc_available = (
+                re.search(r"\bh264_nvenc\b", encoders) is not None and self._probe_nvenc()
+            )
+            if self._nvenc_available:
+                logger.info("NVENC available for clip encoding")
         logger.info("FFmpeg available")
+
+    def _probe_nvenc(self) -> bool:
+        """True when ffmpeg can open an NVENC session on this machine.
+
+        The frame size is deliberately ordinary: NVENC rejects very small inputs
+        outright, so a tiny probe would report a working GPU as unusable.
+        """
+        try:
+            run_media(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "color=c=black:s=320x240:rate=30:duration=0.5", "-c:v", "h264_nvenc",
+                 "-f", "null", "-"],
+                timeout=30, check=True,
+            )
+            return True
+        except Exception as error:  # noqa: BLE001 - any failure means "not usable"
+            logger.info("NVENC probe failed, using the CPU encoder: %s", error)
+            return False
+
+    def _nvenc_args(self, out_w: int, out_h: int, rate: float, gop: list[str]) -> list[str]:
+        """NVENC arguments, or [] when this machine cannot use NVENC.
+
+        NVENC is constant-quality rather than CRF, so ``-cq`` carries the
+        setting the CPU path expresses as ``-crf``. ``-b:v 0`` lets ffmpeg derive
+        the bitrate from that quality target instead of capping it.
+        """
+        if getattr(self, "_nvenc_available", False) is not True:
+            return []
+        mbps = LANDSCAPE_BITRATE_MBPS.get(out_h, 12) if out_w > out_h else 8
+        if rate > 31:
+            mbps *= 1.5
+        return [
+            "-c:v", "h264_nvenc", "-preset", "p4",
+            "-cq", str(self.settings.ffmpeg_crf), "-b:v", "0",
+            "-maxrate", f"{max(mbps, 24):g}M", "-bufsize", f"{max(mbps, 24) * 2:g}M",
+            *gop,
+        ]
 
     def _video_codec_args(self, out_w: int = 1080, out_h: int = 1920, fps: str = "30") -> list[str]:
         """Use the bundled LGPL encoders in BridgeClip; retain server encoding.
@@ -201,6 +240,18 @@ class RenderingService:
         """
         rate = float(Fraction(fps))
         gop = ["-g", str(max(1, round(rate * 2)))]
+
+        # An explicit GPU choice comes first, so a user who asked for NVENC does
+        # not silently get the CPU encoder. "auto" prefers the GPU when it is
+        # usable and otherwise falls through to exactly the behaviour below.
+        preference = (getattr(self.settings, "video_encoder", "cpu") or "cpu").strip().lower()
+        if preference in ("nvenc", "auto") and sys.platform != "darwin":
+            nvenc = self._nvenc_args(out_w, out_h, rate, gop)
+            if nvenc:
+                return nvenc
+            if preference == "nvenc":
+                logger.warning("NVENC was requested but is unavailable; encoding on the CPU")
+
         if self.settings.local_mode and sys.platform == "darwin":
             # VideoToolbox otherwise requires a free hardware encoder. Allow
             # Apple's software fallback on Intel VMs and Macs with a busy GPU.
@@ -520,27 +571,11 @@ class RenderingService:
         target_height: int,
         is_landscape: bool,
     ) -> list[Overlay]:
-        """Title card and channel banner, positioned per shot on the output timeline."""
+        """Channel banner, positioned per shot on the output timeline."""
         src_w, src_h = out_plan.source_width, out_plan.source_height
         overlays: list[Overlay] = []
         # Landscape overlays were sized for 1080p; scale them with the output.
         scale = target_height / 1080 if is_landscape else 1.0
-        title = self._title_overlay_image(request, target_width, scale)
-        if title:
-            path, _, height = title
-            if is_landscape:
-                show_from, show_to = LANDSCAPE_TITLE_SHOW_S
-                fade = LANDSCAPE_TITLE_FADE_S
-                overlays.append((
-                    path, "(W-w)/2", f"{round(40 * scale)}",
-                    f"between(t,{show_from},{show_to})",
-                    f"format=rgba,fade=t=in:st={show_from}:d={fade}:alpha=1,"
-                    f"fade=t=out:st={show_to - fade}:d={fade}:alpha=1",
-                ))
-            else:
-                overlays.append((path, "(W-w)/2", per_shot_expr(out_plan, [
-                    title_y(s, src_w, src_h, target_width, target_height, height) for s in out_plan.shots
-                ])))
         banner = self._banner_overlay_image(request, round(28 * scale) if is_landscape else 34)
         if banner:
             if is_landscape:
@@ -585,21 +620,6 @@ class RenderingService:
             current = label
         parts.append(f"[composited]{video_filter}[out]")
         return ";".join(parts), [overlay[0] for overlay in overlays]
-
-    def _title_overlay_image(
-        self, request: RenderRequest, target_width: int, scale: float = 1.0,
-    ) -> Optional[tuple[str, int, int]]:
-        """Render the title card PNG. Returns (path, width, height) or None."""
-        if not request.title_text:
-            return None
-        path = os.path.join(
-            os.path.dirname(request.output_path),
-            f"title-{request.start_time_ms}-{request.end_time_ms}.png",
-        )
-        result = self._build_title_card(request.title_text, target_width, 0, path, scale)
-        if not result:
-            return None
-        return path, result["width"], result["height"]
 
     async def _generate_captions(
         self,
@@ -755,80 +775,6 @@ class RenderingService:
             raise RenderingError("Could not verify the source audio track")
         return bool(result.stdout.strip())
 
-    def _build_title_card(
-        self,
-        title_text: str,
-        target_width: int,
-        overlay_y: int,
-        output_path: str,
-        scale: float = 1.0,
-    ) -> Optional[dict]:
-        """Generate a rounded-rect PNG with title text and return positioning info."""
-        clean = title_text.replace("\n", " ").strip()
-
-        if not clean:
-            return None
-
-        words = clean.split()
-
-        if len(words) < 2:
-            words = (words * 2)[:2]
-        elif len(words) > 7:
-            words = words[:7]
-
-        if len(words) <= 3:
-            lines = [" ".join(words)]
-        else:
-            mid = (len(words) + 1) // 2
-            lines = [" ".join(words[:mid]), " ".join(words[mid:])]
-
-        font_size = round(42 * scale)
-        pad_x = round(28 * scale)
-        pad_y = round(20 * scale)
-        line_spacing = int(font_size * 1.35)
-        corner_radius = round(16 * scale)
-
-        try:
-            font = ImageFont.truetype(self._font_path, font_size)
-        except Exception:
-            font = ImageFont.load_default()
-
-        temp_img = Image.new("RGBA", (1, 1))
-        temp_draw = ImageDraw.Draw(temp_img)
-
-        line_widths = []
-        for line in lines:
-            bbox = temp_draw.textbbox((0, 0), line, font=font)
-            line_widths.append(bbox[2] - bbox[0])
-
-        max_text_w = max(line_widths)
-        text_block_h = font_size + max(0, len(lines) - 1) * line_spacing
-
-        img_w = max_text_w + pad_x * 2
-        img_h = text_block_h + pad_y * 2
-
-        img = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-
-        draw.rounded_rectangle(
-            [(0, 0), (img_w - 1, img_h - 1)],
-            radius=corner_radius,
-            fill=(255, 255, 255, 242),
-        )
-
-        for i, line in enumerate(lines):
-            bbox = temp_draw.textbbox((0, 0), line, font=font)
-            tw = bbox[2] - bbox[0]
-            x = (img_w - tw) // 2
-            y = pad_y + i * line_spacing
-            draw.text((x, y), line, font=font, fill=(0, 0, 0, 255))
-
-        img.save(output_path, "PNG")
-
-        bar_center = overlay_y // 2
-        card_y = max(10, bar_center - img_h // 2)
-
-        return {"y": card_y, "width": img_w, "height": img_h}
 
     def _banner_overlay_image(self, request: RenderRequest, font_size: int) -> Optional[tuple[str, int, int]]:
         """Render the channel URL banner as a transparent PNG.

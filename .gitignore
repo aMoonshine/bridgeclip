@@ -1,6 +1,11 @@
 node_modules/
 out/
 dist/
+.omo/
+# Agent tooling config and its generated graph: local to this checkout.
+.opencode/
+graphify-out/
+.bridgeclip-e2e-app-*/
 .env
 .env.local
 .env.*
@@ -9,6 +14,9 @@ dist/
 *.p8
 *.p12
 *.key
+*.conf
+*.cfg
+data/
 *.log
 .DS_Store
 engine-venv/
@@ -17,4 +25,5 @@ engine/.venv/
 *.tsbuildinfo
 
 __pycache__/
+.pytest_cache/
 *.py[cod]

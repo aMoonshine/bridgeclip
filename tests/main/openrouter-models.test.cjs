@@ -34,11 +34,19 @@ test('catalog separates tasks, rejects malformed IDs, and retains capability and
   assert.equal(result[0].maxOutputTokens, 8192)
   assert.equal(result[0].inputPrice, 0.000001)
   assert.equal(result[0].supportsImages, true)
+  assert.equal(result[0].supportsReasoning, false)
   const stt = api.parseModelCatalog({ data }, 'transcription')
   assert.equal(stt.length, 1)
   assert.equal(stt[0].inputPrice, null, 'transcription price units must not be guessed')
   for (const id of ['provider/model:free', '~provider/latest', 'vendor/model-2026.09']) assert.equal(api.isModelId(id), true)
   for (const id of ['', 'provider', 'provider/a,b/c', 'p/' + 'x'.repeat(120), 'p/m?key=secret']) assert.equal(api.isModelId(id), false)
+})
+
+test('planning models that think before answering are flagged for the picker', () => {
+  const api = load()
+  const data = [planner('provider/thinks', { supported_parameters: ['structured_outputs', 'reasoning'] })]
+  const [model] = api.parseModelCatalog({ data }, 'planning')
+  assert.equal(model.supportsReasoning, true, 'the picker must be able to warn before a billed attempt')
 })
 
 test('incompatible models remain searchable with an explanation and cannot start an advanced run', async () => {

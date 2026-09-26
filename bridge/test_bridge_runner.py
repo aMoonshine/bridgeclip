@@ -135,7 +135,8 @@ class BridgeTests(unittest.TestCase):
 
     def test_advanced_models_are_applied_before_cached_settings_load(self):
         observed = []
-        keys = ("CLIPPING_MODE", "PLANNER_MODEL", "ADVANCED_TRANSCRIPTION_MODEL", "PLANNER_FALLBACK_MODELS", "PLANNER_MAX_OUTPUT_TOKENS", "PLANNER_SUPPORTS_IMAGES")
+        keys = ("CLIPPING_MODE", "PLANNER_MODEL", "TRANSCRIPTION_BACKEND", "TRANSCRIPTION_MODEL_OVERRIDE",
+                "PLANNER_FALLBACK_MODELS", "PLANNER_MAX_OUTPUT_TOKENS", "PLANNER_SUPPORTS_IMAGES")
         def get_settings():
             observed.append({key: os.environ.get(key) for key in keys})
             return types.SimpleNamespace(openrouter_api_key=None)
@@ -149,17 +150,70 @@ class BridgeTests(unittest.TestCase):
                              planner_max_output_tokens=8192, planner_supports_images=False)
         with patch.dict(sys.modules, modules), patch.dict(os.environ, {}, clear=True), redirect_stdout(io.StringIO()):
             self.assertFalse(asyncio.run(bridge.run(config)))
-        self.assertEqual(observed, [dict(zip(keys, ["advanced", "vendor/planner", "vendor/speech", "", "8192", "false"]))])
+        # A hosted model id also has to move the backend off the local runtime,
+        # or the local one would accept it and quietly ignore it.
+        self.assertEqual(observed, [dict(zip(keys, ["advanced", "vendor/planner", "openrouter", "vendor/speech", "", "8192", "false"]))])
 
     def test_advanced_model_ids_and_capabilities_are_validated(self):
         config = self.config(clipping_mode="advanced", planner_model="vendor/planner", transcription_model="vendor/speech")
         self.assertEqual(bridge.validate_config(config), config)
-        for patch_values in [{"planner_model": ""}, {"transcription_model": None}, {"planner_model": "a/b,c/d"},
+        for patch_values in [{"planner_model": ""}, {"planner_model": "a/b,c/d"},
                              {"planner_model": "vendor/model\n"}, {"planner_model": "https://example.com/model"},
                              {"planner_max_output_tokens": 32001}, {"planner_supports_images": "true"},
-                             {"planner_input_price": float("nan")}, {"clipping_mode": "quality"}]:
+                             {"planner_input_price": float("nan")}]:
             with self.subTest(patch=patch_values), self.assertRaises(ValueError):
                 bridge.validate_config({**config, **patch_values})
+        # None now means "not specified" and falls back to the default, the same
+        # as omitting the field. The form blocks submitting without a choice.
+        self.assertEqual(bridge.validate_config({**config, "transcription_model": None}),
+                         {**config, "transcription_model": None})
+
+    def test_a_model_may_be_chosen_in_any_mode(self):
+        """The presets set defaults, they do not forbid a choice.
+
+        Quality and Economy used to reject these fields outright, which is what
+        made model selection look missing outside Advanced.
+        """
+        for mode in ("quality", "economy", "advanced"):
+            with self.subTest(mode=mode):
+                config = self.config(clipping_mode=mode, planner_model="vendor/planner",
+                                    transcription_model="vendor/speech")
+                self.assertEqual(bridge.validate_config(config), config)
+
+    def test_the_local_transcription_choice_is_not_a_model_id(self):
+        """"local" is the on-device runtime, so it skips the vendor/model shape."""
+        config = self.config(clipping_mode="quality", transcription_model="local")
+        self.assertEqual(bridge.validate_config(config), config)
+        for bad in ("LOCAL", "/local", "local;", "local model"):
+            with self.subTest(value=bad), self.assertRaises(ValueError):
+                bridge.validate_config({**config, "transcription_model": bad})
+
+    def test_a_chosen_model_reaches_the_engine_in_any_mode(self):
+        base = self.config(clipping_mode="quality")
+        for name, extra, expect_backend, expect_override in [
+            ("local", {"transcription_model": "local"}, "nemotron", None),
+            ("hosted", {"transcription_model": "vendor/speech"}, "openrouter", "vendor/speech"),
+        ]:
+            with self.subTest(choice=name):
+                for key in ("TRANSCRIPTION_BACKEND", "TRANSCRIPTION_MODEL_OVERRIDE"):
+                    os.environ.pop(key, None)
+                # The engine is stubbed out, so the run stops right after the
+                # environment is configured. That is the part under test.
+                with patch.dict(sys.modules, {
+                    "clip_engine.config": types.SimpleNamespace(get_settings=lambda: types.SimpleNamespace(openrouter_api_key=None)),
+                    "clip_engine.bridge_contract": types.SimpleNamespace(BRIDGE_CONTRACT_VERSION=2),
+                    "clip_engine.logging_safety": types.SimpleNamespace(install_safe_logging=lambda: None),
+                    "clip_engine.services.ai_clipping_pipeline": types.SimpleNamespace(
+                        AIClippingPipeline=None, ClippingJobRequest=None, JobStatus=None),
+                }):
+                    coroutine = bridge.run({**base, **extra})
+                    with self.assertRaises(Exception):
+                        coroutine.send(None)
+                    coroutine.close()
+                # A hosted choice must also move the backend, or the local one
+                # would accept the model id and ignore it.
+                self.assertEqual(os.environ.get("TRANSCRIPTION_BACKEND"), expect_backend)
+                self.assertEqual(os.environ.get("TRANSCRIPTION_MODEL_OVERRIDE"), expect_override)
 
     def test_stdin_transport_and_size_limit(self):
         async def success(config):

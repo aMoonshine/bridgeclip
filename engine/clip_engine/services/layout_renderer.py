@@ -9,7 +9,7 @@ shots are concatenated back into one 9:16 stream:
     screen_cam    screen (zoomed on the active area) over the webcam
     screen        whole frame over a blurred copy of itself
 
-Also provides per-shot positions for captions, the title card and the
+Also provides per-shot positions for captions, the channel banner and the
 channel banner so they never sit on top of a face or cut across a seam.
 
 Everything here is pure string/number math so it can be unit tested without
@@ -564,7 +564,6 @@ def build_layout_graph(
 # and above the platform UI.
 FILL_CAPTION_Y = 1340
 FILL_BANNER_Y = 1590
-TOP_TITLE_Y = 110
 
 
 def caption_anchor(shot: ShotLayout, src_w: int, src_h: int, out_w: int, out_h: int) -> tuple[int, int]:
@@ -577,14 +576,6 @@ def caption_anchor(shot: ShotLayout, src_w: int, src_h: int, out_w: int, out_h: 
         if bar >= 200:
             return 2, out_h - int(bar * 0.55)
     return 5, int(out_h * FILL_CAPTION_Y / 1920)
-
-
-def title_y(shot: ShotLayout, src_w: int, src_h: int, out_w: int, out_h: int, title_h: int) -> int:
-    if shot.layout == LayoutType.SCREEN:
-        _, overlay_y = letterbox_geometry(src_w, src_h, out_w, out_h)
-        if overlay_y > title_h + 20:
-            return max(10, overlay_y // 2 - title_h // 2)
-    return int(out_h * TOP_TITLE_Y / 1920)
 
 
 def banner_y(shot: ShotLayout, src_w: int, src_h: int, out_w: int, out_h: int) -> int:
@@ -724,8 +715,8 @@ def face_zones(plan: ClipLayoutPlan, time_map, out_w: int, out_h: int) -> list[F
     return sorted(zones, key=lambda z: z.start_ms)
 
 
-# Band a moved caption stays in (share of the height): below the title card
-# (y 110, up to ~140 px tall) and above the channel banner / platform UI.
+# Band a moved caption stays in (share of the height): below the top of the frame
+# and above the channel banner and the platform UI.
 CAPTION_TOP_LIMIT = 0.15
 CAPTION_BOTTOM_LIMIT = 0.80
 # Room kept around a face (share of its size). Detector boxes run from the

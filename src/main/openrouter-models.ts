@@ -41,7 +41,9 @@ export function parseModelCatalog(value: unknown, task: ModelTask): OpenRouterMo
       name: typeof raw.name === 'string' ? raw.name.slice(0, 160).split('').filter((char) => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127).join('') : raw.id,
       contextLength: number(raw.context_length, true),
       maxOutputTokens: number(record(raw.top_provider).max_completion_tokens, true),
-      supportsImages: inputs.includes('image'),
+        supportsImages: inputs.includes('image'),
+        supportsReasoning: parameters.includes('reasoning'),
+
       // Transcription catalog prices have provider-dependent units. Don't label them as token prices.
       inputPrice: task === 'planning' ? number(pricing.prompt) : null,
       outputPrice: task === 'planning' ? number(pricing.completion) : null,

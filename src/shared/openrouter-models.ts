@@ -5,7 +5,9 @@ export interface OpenRouterModel {
   name: string
   contextLength: number | null
   maxOutputTokens: number | null
-  supportsImages: boolean
+    supportsImages: boolean
+    supportsReasoning: boolean
+
   inputPrice: number | null
   outputPrice: number | null
   unavailableReason: string | null

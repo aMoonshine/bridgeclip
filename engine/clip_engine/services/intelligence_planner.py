@@ -991,6 +991,8 @@ Do not overlap clips by more than 5 seconds."""
 
         # Advanced accepts models without configurable reasoning. Let the
         # selected model use its defaults instead of requiring a preset effort.
+        # The payload pins `require_parameters`, so adding a reasoning control
+        # here would make a non-reasoning model unroutable rather than bounded.
         if self.settings.clipping_mode != "advanced":
             apply_reasoning(payload, self.settings.planner_reasoning_effort)
         return payload
@@ -1019,6 +1021,18 @@ Do not overlap clips by more than 5 seconds."""
         try:
             content, finish_reason = message_text(response)
             if not content:
+                # An empty answer with a spent budget means a reasoning model
+                # consumed every output token thinking and left nothing to parse.
+                # Asking again cannot change that, so it must not be retried: the
+                # attempt is billed in full either way.
+                if finish_reason == "length":
+                    served_by = response.get("model") or "The planner model"
+                    raise IntelligencePlanningError(
+                        f"{served_by} used the whole output budget "
+                        f"({self.settings.planner_max_output_tokens} tokens) without returning a plan. "
+                        "This model spends its budget on reasoning; choose a non-reasoning planner, "
+                        "or one that answers within the limit."
+                    )
                 raise IntelligencePlanningError(
                     f"Planner returned no content (finish_reason={finish_reason})"
                 )
@@ -1040,7 +1054,11 @@ Do not overlap clips by more than 5 seconds."""
                     parsed = json.loads(json_match.group())
                 else:
                     logger.error("Failed to parse JSON from planner response")
-                    raise IntelligencePlanningError("Failed to parse JSON from planner response")
+                    # Explicitly retryable: a truncated stream can produce
+                    # unparseable output, and a second attempt may not.
+                    raise IntelligencePlanningError(
+                        "Failed to parse JSON from planner response", retryable=True
+                    )
             
             logger.info(f"Parsed response structure: {type(parsed).__name__}, keys: {parsed.keys() if isinstance(parsed, dict) else 'N/A'}")
             
@@ -1308,8 +1326,11 @@ Do not overlap clips by more than 5 seconds."""
                 insights=insights,
             )
 
-        except IntelligencePlanningError as e:
-            e.retryable = True
+        except IntelligencePlanningError:
+            # The raised error carries its own retryable flag. Forcing it True
+            # retried failures that cannot improve on a second try, such as a
+            # response that spent its whole output budget and returned nothing,
+            # paying for the same answer again each attempt.
             raise
         except Exception as e:
             logger.error(f"Failed to parse clip plan response: {e}")

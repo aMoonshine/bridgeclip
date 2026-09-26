@@ -114,28 +114,53 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
   }
 })
 
-test('advanced selections travel with the job while presets ignore retained custom choices', () => {
-  const { ClipsStep, buildJobRequest } = form.exports
-  const draft = {
-    source: 'https://example.com/video', clippingMode: 'advanced',
-    plannerModel: 'provider/planning', transcriptionModel: 'provider/speech',
-    aspectRatio: '9:16', layoutStyle: 'auto', layoutVision: true, pacing: 'tight',
-    durations: ['short'], autoClipCount: true, maxClips: 5, includeCaptions: true, captionPreset: 'pop'
-  }
-  const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
-  assert.match(html, /Clip planning model/)
-  assert.match(html, /Transcription model/)
-  assert.equal((html.match(/role="combobox"/g) ?? []).length, 2)
-  const request = buildJobRequest(draft, { start: null, end: null })
-  assert.equal(request.plannerModel, 'provider/planning')
-  assert.equal(request.transcriptionModel, 'provider/speech')
-  assert.equal(request.layoutVision, true)
-  for (const clippingMode of ['quality', 'economy']) {
-    const preset = buildJobRequest({ ...draft, clippingMode }, { start: null, end: null })
-    assert.equal(preset.plannerModel, undefined)
-    assert.equal(preset.transcriptionModel, undefined)
-  }
-})
+  test('a chosen model travels with the job in every mode', () => {
+    const { ClipsStep, buildJobRequest } = form.exports
+    const draft = {
+      source: 'https://example.com/video', clippingMode: 'advanced',
+      plannerModel: 'provider/planning', transcriptionModel: 'provider/speech',
+      aspectRatio: '9:16', layoutStyle: 'auto', layoutVision: true, pacing: 'tight',
+      durations: ['short'], autoClipCount: true, maxClips: 5, includeCaptions: true, captionPreset: 'pop'
+    }
+    const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
+    assert.match(html, /Clip planning model/)
+    assert.match(html, /Transcription model/)
+    assert.equal((html.match(/role="combobox"/g) ?? []).length, 2)
+    const request = buildJobRequest(draft, { start: null, end: null })
+    assert.equal(request.plannerModel, 'provider/planning')
+    assert.equal(request.transcriptionModel, 'provider/speech')
+    assert.equal(request.layoutVision, true)
+
+    // The presets used to drop these fields, which is what made model selection
+    // look unavailable outside Advanced. A choice now applies in every mode, and
+    // the pickers are on screen there too.
+    for (const clippingMode of ['quality', 'economy']) {
+      const preset = buildJobRequest({ ...draft, clippingMode }, { start: null, end: null })
+      assert.equal(preset.plannerModel, 'provider/planning', clippingMode)
+      assert.equal(preset.transcriptionModel, 'provider/speech', clippingMode)
+      const presetHtml = renderToStaticMarkup(
+        React.createElement(ClipsStep, { draft: { ...draft, clippingMode }, update() {} })
+      )
+      assert.equal((presetHtml.match(/role="combobox"/g) ?? []).length, 2, clippingMode)
+    }
+  })
+
+  test('the on-device speech model is offered and needs no provider id', () => {
+    const { ClipsStep, buildJobRequest } = form.exports
+    const draft = {
+      source: 'https://example.com/video', clippingMode: 'quality',
+      plannerModel: '', transcriptionModel: 'local',
+      aspectRatio: '9:16', layoutStyle: 'auto', layoutVision: true, pacing: 'tight',
+      durations: ['short'], autoClipCount: true, maxClips: 5, includeCaptions: true, captionPreset: 'pop'
+    }
+    const request = buildJobRequest(draft, { start: null, end: null })
+    assert.equal(request.transcriptionModel, 'local')
+    // An empty planner is simply not sent, so the engine keeps its default.
+    assert.equal(request.plannerModel, undefined)
+    const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
+    assert.match(html, /This computer \(Nemotron on GPU\)/)
+  })
+
 
 test('clip list explains when smart framing intentionally keeps the whole frame', () => {
   const clip = (index) => ({
