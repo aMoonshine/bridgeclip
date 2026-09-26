@@ -185,52 +185,7 @@ class RenderingService:
             self._local_cpu_encoder = next((name for name in ("libopenh264", "libx264") if re.search(rf"\b{name}\b", encoders)), None)
             if self._local_cpu_encoder is None:
                 raise RuntimeError("FFmpeg needs a CPU H.264 encoder (OpenH264 or x264)")
-            # Whether NVENC can be used at all. Listing the encoder is not enough:
-            # it also needs a working NVIDIA driver, so a real encode is probed
-            # once and a failure is remembered rather than retried per clip.
-            self._nvenc_available = (
-                re.search(r"\bh264_nvenc\b", encoders) is not None and self._probe_nvenc()
-            )
-            if self._nvenc_available:
-                logger.info("NVENC available for clip encoding")
         logger.info("FFmpeg available")
-
-    def _probe_nvenc(self) -> bool:
-        """True when ffmpeg can open an NVENC session on this machine.
-
-        The frame size is deliberately ordinary: NVENC rejects very small inputs
-        outright, so a tiny probe would report a working GPU as unusable.
-        """
-        try:
-            run_media(
-                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-                 "-i", "color=c=black:s=320x240:rate=30:duration=0.5", "-c:v", "h264_nvenc",
-                 "-f", "null", "-"],
-                timeout=30, check=True,
-            )
-            return True
-        except Exception as error:  # noqa: BLE001 - any failure means "not usable"
-            logger.info("NVENC probe failed, using the CPU encoder: %s", error)
-            return False
-
-    def _nvenc_args(self, out_w: int, out_h: int, rate: float, gop: list[str]) -> list[str]:
-        """NVENC arguments, or [] when this machine cannot use NVENC.
-
-        NVENC is constant-quality rather than CRF, so ``-cq`` carries the
-        setting the CPU path expresses as ``-crf``. ``-b:v 0`` lets ffmpeg derive
-        the bitrate from that quality target instead of capping it.
-        """
-        if getattr(self, "_nvenc_available", False) is not True:
-            return []
-        mbps = LANDSCAPE_BITRATE_MBPS.get(out_h, 12) if out_w > out_h else 8
-        if rate > 31:
-            mbps *= 1.5
-        return [
-            "-c:v", "h264_nvenc", "-preset", "p4",
-            "-cq", str(self.settings.ffmpeg_crf), "-b:v", "0",
-            "-maxrate", f"{max(mbps, 24):g}M", "-bufsize", f"{max(mbps, 24) * 2:g}M",
-            *gop,
-        ]
 
     def _video_codec_args(self, out_w: int = 1080, out_h: int = 1920, fps: str = "30") -> list[str]:
         """Use the bundled LGPL encoders in BridgeClip; retain server encoding.
@@ -240,17 +195,6 @@ class RenderingService:
         """
         rate = float(Fraction(fps))
         gop = ["-g", str(max(1, round(rate * 2)))]
-
-        # An explicit GPU choice comes first, so a user who asked for NVENC does
-        # not silently get the CPU encoder. "auto" prefers the GPU when it is
-        # usable and otherwise falls through to exactly the behaviour below.
-        preference = (getattr(self.settings, "video_encoder", "cpu") or "cpu").strip().lower()
-        if preference in ("nvenc", "auto") and sys.platform != "darwin":
-            nvenc = self._nvenc_args(out_w, out_h, rate, gop)
-            if nvenc:
-                return nvenc
-            if preference == "nvenc":
-                logger.warning("NVENC was requested but is unavailable; encoding on the CPU")
 
         if self.settings.local_mode and sys.platform == "darwin":
             # VideoToolbox otherwise requires a free hardware encoder. Allow

@@ -69,7 +69,7 @@ function validPreference(field: (typeof PERSISTED_FIELDS)[number], value: unknow
   switch (field) {
     case 'clippingMode': return value === 'quality' || value === 'economy' || value === 'advanced'
     case 'plannerModel': return value === '' || isModelId(value)
-    case 'transcriptionModel': return value === '' || value === LOCAL_TRANSCRIPTION_MODEL || isModelId(value)
+    case 'transcriptionModel': return value === '' || isModelId(value)
     case 'aspectRatio': return value === '9:16' || value === '16:9'
     case 'layoutStyle': return value === 'auto' || value === 'fill' || value === 'fit'
     case 'layoutVision':
@@ -82,9 +82,6 @@ function validPreference(field: (typeof PERSISTED_FIELDS)[number], value: unknow
     case 'captionPreset': return typeof value === 'string' && value.length <= 40
   }
 }
-
-/** The local model, chosen without an API key and free of provider cost. */
-export const LOCAL_TRANSCRIPTION_MODEL = 'local'
 
 function readPersistedPreferences(): Partial<ClipDraft> {
   try {

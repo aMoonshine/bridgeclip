@@ -135,7 +135,7 @@ class BridgeTests(unittest.TestCase):
 
     def test_advanced_models_are_applied_before_cached_settings_load(self):
         observed = []
-        keys = ("CLIPPING_MODE", "PLANNER_MODEL", "TRANSCRIPTION_BACKEND", "TRANSCRIPTION_MODEL_OVERRIDE",
+        keys = ("CLIPPING_MODE", "PLANNER_MODEL", "TRANSCRIPTION_MODEL_OVERRIDE",
                 "PLANNER_FALLBACK_MODELS", "PLANNER_MAX_OUTPUT_TOKENS", "PLANNER_SUPPORTS_IMAGES")
         def get_settings():
             observed.append({key: os.environ.get(key) for key in keys})
@@ -152,7 +152,7 @@ class BridgeTests(unittest.TestCase):
             self.assertFalse(asyncio.run(bridge.run(config)))
         # A hosted model id also has to move the backend off the local runtime,
         # or the local one would accept it and quietly ignore it.
-        self.assertEqual(observed, [dict(zip(keys, ["advanced", "vendor/planner", "openrouter", "vendor/speech", "", "8192", "false"]))])
+        self.assertEqual(observed, [dict(zip(keys, ["advanced", "vendor/planner", "vendor/speech", "", "8192", "false"]))])
 
     def test_advanced_model_ids_and_capabilities_are_validated(self):
         config = self.config(clipping_mode="advanced", planner_model="vendor/planner", transcription_model="vendor/speech")
@@ -180,23 +180,11 @@ class BridgeTests(unittest.TestCase):
                                     transcription_model="vendor/speech")
                 self.assertEqual(bridge.validate_config(config), config)
 
-    def test_the_local_transcription_choice_is_not_a_model_id(self):
-        """"local" is the on-device runtime, so it skips the vendor/model shape."""
-        config = self.config(clipping_mode="quality", transcription_model="local")
-        self.assertEqual(bridge.validate_config(config), config)
-        for bad in ("LOCAL", "/local", "local;", "local model"):
-            with self.subTest(value=bad), self.assertRaises(ValueError):
-                bridge.validate_config({**config, "transcription_model": bad})
-
     def test_a_chosen_model_reaches_the_engine_in_any_mode(self):
         base = self.config(clipping_mode="quality")
-        for name, extra, expect_backend, expect_override in [
-            ("local", {"transcription_model": "local"}, "nemotron", None),
-            ("hosted", {"transcription_model": "vendor/speech"}, "openrouter", "vendor/speech"),
-        ]:
-            with self.subTest(choice=name):
-                for key in ("TRANSCRIPTION_BACKEND", "TRANSCRIPTION_MODEL_OVERRIDE"):
-                    os.environ.pop(key, None)
+        for mode in ("quality", "economy", "advanced"):
+            with self.subTest(mode=mode):
+                os.environ.pop("TRANSCRIPTION_MODEL_OVERRIDE", None)
                 # The engine is stubbed out, so the run stops right after the
                 # environment is configured. That is the part under test.
                 with patch.dict(sys.modules, {
@@ -206,14 +194,14 @@ class BridgeTests(unittest.TestCase):
                     "clip_engine.services.ai_clipping_pipeline": types.SimpleNamespace(
                         AIClippingPipeline=None, ClippingJobRequest=None, JobStatus=None),
                 }):
-                    coroutine = bridge.run({**base, **extra})
+                    config = {**base, "clipping_mode": mode, "transcription_model": "vendor/speech"}
+                    if mode == "advanced":
+                        config["planner_model"] = "vendor/planner"
+                    coroutine = bridge.run(config)
                     with self.assertRaises(Exception):
                         coroutine.send(None)
                     coroutine.close()
-                # A hosted choice must also move the backend, or the local one
-                # would accept the model id and ignore it.
-                self.assertEqual(os.environ.get("TRANSCRIPTION_BACKEND"), expect_backend)
-                self.assertEqual(os.environ.get("TRANSCRIPTION_MODEL_OVERRIDE"), expect_override)
+                self.assertEqual(os.environ.get("TRANSCRIPTION_MODEL_OVERRIDE"), "vendor/speech")
 
     def test_stdin_transport_and_size_limit(self):
         async def success(config):

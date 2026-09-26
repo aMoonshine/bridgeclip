@@ -598,11 +598,10 @@ class IntelligencePlannerService:
                 else:
                     cost_reported = False
                     pricing = MODEL_PRICING.get(served_by, DEFAULT_PRICING)
-                    if self.settings.clipping_mode == "advanced":
-                        if self.settings.planner_input_price is not None and self.settings.planner_output_price is not None:
-                            pricing = {"input": self.settings.planner_input_price, "output": self.settings.planner_output_price}
-                        else:
-                            pricing = None
+                    if self.settings.planner_input_price is not None and self.settings.planner_output_price is not None:
+                        pricing = {"input": self.settings.planner_input_price, "output": self.settings.planner_output_price}
+                    elif self.settings.clipping_mode == "advanced":
+                        pricing = None
                     if pricing is None:
                         cost_incomplete = True
                     else:

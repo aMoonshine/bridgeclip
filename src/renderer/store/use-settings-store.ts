@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { errorMessage } from '../lib/utils'
 import { getApi } from '../lib/ipc'
 import type { ClipSettings, ToolStatus } from '../../preload/index'
+import { EMPTY_SOURCE_CACHE, type SourceCacheInfo } from '../../shared/source-cache'
 
 interface SettingsState extends ClipSettings {
   loaded: boolean
@@ -9,10 +10,14 @@ interface SettingsState extends ClipSettings {
   toolStatus: ToolStatus | null
   checkingTools: boolean
   toolError: string | null
+  sourceCache: SourceCacheInfo
+  deletingSource: string | null
   load: () => Promise<void>
   save: (settings: Partial<ClipSettings>) => Promise<void>
   replaceApiKey: (key: 'openrouterApiKey' | 'zernioApiKey', value: string) => Promise<void>
   checkTools: () => Promise<void>
+  refreshSourceCache: () => Promise<void>
+  deleteCachedSource: (key: string) => Promise<void>
 }
 
 // Queue writes so each partial update merges with the last successful save.
@@ -26,11 +31,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   outputDirectory: '',
   pythonPath: 'python3',
   customVocabulary: '',
+  downloadResolution: 'source',
+  renderConcurrency: 0,
+  sourceCacheDirectory: '',
   loaded: false,
   saving: false,
   toolStatus: null,
   checkingTools: false,
   toolError: null,
+  sourceCache: EMPTY_SOURCE_CACHE,
+  deletingSource: null,
 
   load: async () => {
     const settings = await getApi().settings.load()
@@ -80,6 +90,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     } finally {
       if (request === latestToolCheck) set({ checkingTools: false })
     }
+  },
+
+  refreshSourceCache: async () => {
+    try {
+      set({ sourceCache: await getApi().system.sourceCache() })
+    } catch {
+      set({ sourceCache: EMPTY_SOURCE_CACHE })
+    }
+  },
+
+  deleteCachedSource: async (key) => {
+    set({ deletingSource: key })
+    try {
+      set({ sourceCache: await getApi().system.deleteCachedSource(key) })
+    } catch {
+      set({ sourceCache: EMPTY_SOURCE_CACHE })
+    } finally {
+      set({ deletingSource: null })
+    }
   }
 }))
 
@@ -89,7 +118,10 @@ function pickSettings(s: ClipSettings): ClipSettings {
     zernioConfigured: s.zernioConfigured,
     outputDirectory: s.outputDirectory,
     pythonPath: s.pythonPath,
-    customVocabulary: s.customVocabulary
+    customVocabulary: s.customVocabulary,
+    downloadResolution: s.downloadResolution,
+    renderConcurrency: s.renderConcurrency,
+    sourceCacheDirectory: s.sourceCacheDirectory
   }
 }
 

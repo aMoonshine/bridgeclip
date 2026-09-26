@@ -5,7 +5,8 @@ Written 2026-09-26 at a deliberate pause in development. Everything below is a r
 what was decided, what was built, what was fixed, and what is still broken.
 
 Resumed 2026-09-26 on `ours/ui-overhaul`: the 48-file working tree was saved in local commit
-`27fd4da`. B1-B3 were then diagnosed and fixed locally; the remaining work starts at B4.
+`27fd4da`. B1-B3 were fixed there. Current integration work is on `ours/upstream-overlay`, based
+on upstream v0.1.18, with `ours/ui-overhaul` preserved as the rollback point.
 
 If this file and another document disagree, this file wins for fork-specific decisions and
 `docs/UPSTREAM_SYNC.md` wins for remote and push policy.
@@ -14,10 +15,10 @@ If this file and another document disagree, this file wins for fork-specific dec
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| D1 | **Drop local GPU transcription.** Cloud transcription only. | Measured ~4 minutes for a 40-minute video (~10x realtime) on an RTX 3090 via the Vulkan NeMo path. Verified the audio pipeline is already correct (16 kHz mono PCM), so this is genuine runtime speed, not misconfiguration. The hosted Nemotron model costs cents. Not worth maintaining a 741 MB model plus a GPU runtime. |
-| D2 | **Drop local diarization (Sortformer).** | Same runtime cost problem as D1. Speaker labels are not consumed by the layout analyzer anyway, so the feature produced no user-visible benefit. Deferred, not rejected — see section 7. |
+| D1 | **Use cloud transcription only.** Remove local ASR models and their runtime path. | The local path added model downloads, setup, and maintenance. OpenRouter transcription is inexpensive for the observed workload; the measured run cost was about $0.0484. |
+| D2 | **Do not add local diarization.** | Speaker labels are not currently consumed by framing. Revisit speaker-aware framing only if two-person crop work shows that visual tracking alone is insufficient. |
 | D3 | **No direct OpenAI OAuth.** | Owner decision. OpenAI models remain reachable through OpenRouter. |
-| D4 | **Keep only useful fork features.** Reusable source-video cache and its folder picker, download-resolution cap, output-folder control, useful model selection, render concurrency, 24-hour time, and title-card removal. Drop local ASR/diarization and the optional NVENC encoder setting. | Hosted transcription is fast and inexpensive. GPU encoding did not show a clear speed benefit in the owner's trial. Keep the settings that save repeat downloads or give useful control. |
+| D4 | **Keep the small user-facing overlay.** Reusable source-video cache and folder picker, download-resolution cap, output-folder control, optional OpenRouter model selection, render concurrency, 24-hour time, and title-card removal. Drop local ASR/diarization and GPU encoder selection. | Owner releases are the product baseline. Carry only controls and workflow improvements that remain useful alongside upstream. |
 | D5 | **`main` mirrors upstream.** Fork features live in a long-lived overlay branch that is rebased, not merged. | Upstream updates frequently. A pure mirror keeps upstream adoption cheap and conflict-free. See section 2. |
 | D6 | **No upstream PRs.** | `CONTRIBUTING.md` restricts PRs to collaborators. This was confirmed against the live repository, not assumed. |
 
@@ -32,22 +33,21 @@ it open describing an abandoned approach.
 
 ## 2. Branch strategy
 
-Three roles, deliberately separated:
+The current application branch is `ours/upstream-overlay`, based on upstream
+v0.1.18. `ours/ui-overhaul` is the preserved rollback branch, not the active
+application branch. Our changes are saved as commits above the upstream base.
 
-- `main` — a mirror of `upstream/main`. Our commits never land here. Update with
-  `git fetch upstream && git reset --hard upstream/main`. Never push force to `origin`.
-- `ours/ui-overhaul` — the long-lived overlay holding every fork feature. It is **rebased** onto
-  a fresh `upstream/main`, never merged. Rebasing surfaces conflicts once, at the moment upstream
-  lands, instead of letting them accumulate for a quarterly merge.
-- `ours/release` — the tagged build line. Merge `ours/ui-overhaul` here to cut a release.
+Local `main` mirrors the fetched upstream base. The previous main is preserved
+as `codex/archive-main-2026-09-26`; remote `origin/main` still has legacy fork
+history and must not be force-pushed.
 
-The owner's releases are the base for ongoing work. Review each fetched `upstream/main`, rebase
-the overlay, and carry forward only the fork features listed in D4. Do not recreate features that
-upstream already provides.
+For each upstream update, create a new `codex/overlay-<version>` branch from the
+current overlay, rebase its fork commits onto the new upstream SHA, review the
+range-diff and test it. Publish the new branch normally and retain the previous
+published overlay for rollback. Published history is never rewritten. Verified
+builds can receive immutable tags; no separate `ours/release` branch is needed yet.
 
-This replaces the older `sync/upstream-YYYYMMDD` merge-branch policy in `docs/UPSTREAM_SYNC.md`.
-That document's fetch/compare/review/test discipline still applies; only the branch topology
-changed.
+See `docs/UPSTREAM_SYNC.md` for the exact update and feature-verification procedure.
 
 **Known cost of this model:** because of D6, upstream fixes never come back automatically. Review
 upstream changes to framing and rendering when rebasing B4, and keep the local crop fix only if
@@ -60,16 +60,18 @@ product feature is background app updates (#49), with a Settings check, update s
 sidebar, safer restart behavior during jobs, and platform-aware release-feed selection. The
 following commits fix macOS bundle-path handling and update release documentation. Upstream has
 also removed the local ASR path and the fork's GPU encoder option. Its branch removes the source
-cache and video settings too, so the rebase must restore only the owner's selected cache, folder,
-resolution, and concurrency features.
+cache and video settings too, so the overlay restores the selected cache, folder, resolution, and
+concurrency features, plus existing output-folder control and optional model choices.
 
-## 3. Repository state at pause
+## 3. Repository state
 
 - Canonical checkout: `Y:\ProjectsAI\bridgeclip`
 - `origin` = `aMoonshine/bridgeclip`, `upstream` = `bridge-mind/bridgeclip`
-- HEAD `a217f87`; `upstream/main` `f6c7226` (v0.1.18); local is **4 behind / 9 ahead**
-- **45 uncommitted entries** (34 modified, 11 untracked). Nothing from this session is committed
-  or pushed. The only untracked source files that matter are listed in section 4.
+- Original overlay: `ours/ui-overhaul` at `ce653d5`, based on the preserved local snapshot.
+- Integration branch: `ours/upstream-overlay`, based on `upstream/main` `f6c7226` (v0.1.18),
+  with the snapshot and B1-B3 fix commits replayed. Selective feature restoration is in progress.
+- Integration edits are being saved in thematic commits for publication to `origin`;
+  Git refs are the authority for the current local and remote checkpoint.
 - A foreign `stash@{0}` exists, touching `src/main/pipeline-runner.ts`. It is not ours and was
   never inspected. Do not drop it.
 - Never create directory junctions inside this checkout. A previous session lost
@@ -86,21 +88,20 @@ New files:
 - `src/main/source-cache.ts`, `src/shared/source-cache.ts`,
   `src/renderer/components/SourceCacheSettings.tsx` — cache folder picker, entry list, delete,
   and open-folder in **Settings → System check → Downloaded sources**.
-- `src/renderer/components/VideoSettings.tsx` — download resolution, video encoder, render
-  concurrency.
-- `docs/video-performance.md` — measurements and rationale for the above.
+- `src/renderer/components/VideoSettings.tsx` — download resolution and render concurrency.
+- `docs/video-performance.md` — current download, cache, and software-rendering settings.
 
 Modified behaviour:
 
 - `video_downloader.py` — `DOWNLOAD_RESOLUTION` ladder (`source`/`2160`/`1440`/`1080`/`720`),
   cache lookup before download, accurate HTTP 403 classification.
 - `config.py` — the new video settings and the source-cache settings.
-- `rendering_service.py`, `layout_renderer.py`, `ai_clipping_pipeline.py` — video encoder
-  selection; title card removed.
+- `rendering_service.py`, `layout_renderer.py`, `ai_clipping_pipeline.py` — title card removed;
+  software encoding remains the render path.
 - `bridge_runner.py` — accepts transcription model fields in **every** clipping mode, not only
   Advanced.
-- `JobForm.tsx`, `use-draft-store.ts`, `ModelPicker.tsx`, `openrouter-models.ts` — model pickers
-  in all modes, local-model option, persisted selection, reasoning-model warning.
+- `JobForm.tsx`, `use-draft-store.ts`, `ModelPicker.tsx`, `openrouter-models.ts` — optional
+  OpenRouter model choices in every mode, persisted selection, reasoning-model warning.
 - `utils.ts`, `RunStats.tsx`, `PostDialog.tsx` — 24-hour time (`hour12: false`).
 
 ## 5. Environment restore
@@ -180,19 +181,20 @@ saved source frame confirms two actual people, so that example does not support 
 claim that `two_shot` classification itself was wrong. The failure to solve is the positioning
 and crop quality.
 
-Current code converts the vision model's head-and-shoulders rectangles to estimated face boxes;
-when local face tracking finds two people, those face boxes replace the vision rectangles. The
-renderer then sizes each crop from the face and constrains it to that face's side of the source
-frame. That can leave too little room to center a face or include the detected person. The exact
-saved output still needs to be compared with its source frame before treating this as the proven
-root cause.
+Before the overlay, the pipeline requested person rectangles from the vision model but converted
+any returned rectangles into estimated face boxes. When local face tracking found two people, its
+face boxes replaced those estimates. The renderer sized each crop from a face and constrained it
+to that face's side of the source. This could explain the clipping, but is not a proven root cause.
 
-First use the person rectangles already returned by the vision model, with locally tracked faces
-as position anchors, and frame each panel around the full person rectangle with padding. The
-existing local face detector and vision request are enough to try this; adding YOLO, SCRFD, or
-MediaPipe is premature. Reconsider a local person detector only if this path cannot reliably
-locate the people. B4 remains open until the same source clip renders with both people centered
-and neither face clipped.
+The saved results contain 63 vision-classified `two_shot` summaries across five jobs, each with
+two final face boxes. They do not contain the provider's raw `people` field. The engine logs also
+show only final layout summaries. Therefore we have **not verified** whether the model returned
+two person rectangles for the failing video.
+
+The integration branch now requests full visible person rectangles, preserves two valid returned
+boxes, and uses them to center the stacked panels. If boxes are missing, it falls back to the old
+face crop. This path is unverified until a real response and matching source/output frames are
+inspected. Only then can we decide whether a separate detector such as YOLO is needed.
 
 ### B5 — Dead space above the subject in vertical output
 
@@ -207,9 +209,8 @@ picks the wrong moment. Needs a concrete clip id and timecode before any change.
 
 ### B7 — Long transcript passages appear truncated
 
-Long semantic chunks are cut. Never root-caused. Related open question: per-word confidence from
-the local model was hard-coded to `1.0` and then discarded, so word-level quality signals were
-never available to help here.
+Long semantic chunks are cut. Never root-caused. Word-level confidence is not currently part of
+the hosted transcription contract, so it cannot guide chunk reconstruction.
 
 ### Fixed during this session, for reference
 
@@ -237,25 +238,16 @@ React Fast Refresh warnings in dev: `Could not Fast Refresh ("EMPTY_TIKTOK" / "W
 "framingProblem" export is incompatible)`. Caused by modules exporting both components and
 constants. Harmless at runtime. Fix by moving the constants into their own modules.
 
-## 7. Deferred: recognising who should be framed
+## 7. Framing versus speaker identity
 
-D2 removed diarization, so nothing currently tells the layout stage *who* is speaking. B5 and B6
-may benefit from an active-speaker signal. B4 is a two-person framing issue and should first use
-the person boxes and local face tracking already available in the layout path.
+B4 does not need diarization. The requested behavior is visual: detect two people, keep their
+left-to-right ordering stable, and place one fully visible person in each stacked panel. The
+vision request asks for person rectangles; local YuNet detects and tracks faces. The actual
+provider rectangles from earlier jobs were not retained. Verify the new crop path against a real
+response and the failing video before choosing another detection model.
 
-Options worth evaluating when the backlog is picked up again, in rough order of effort:
-
-1. **Face detection and tracking** on sampled frames, then associate detections with the active
-   speaker. This may help B5 and B6. For B4, first improve positioning from existing person and
-   face boxes; a new detector is not justified yet.
-2. **Mouth-motion / audio-energy correlation** as a cheap active-speaker signal that needs no
-   identity model at all.
-3. **Cloud diarization** through OpenRouter, if a provider offers it, keeping the local runtime
-   deleted.
-
-Option 1 is the highest value and the only one that also improves peak-score selection. Do not
-start it before B1–B4 are closed; B4's crop issue can be addressed using detections the app
-already has.
+B5/B6 may need an active-speaker signal because they concern who is talking or should be selected.
+Evaluate mouth-motion against audio energy before adding cloud diarization or another local model.
 
 ## 8. Cost record
 
@@ -275,9 +267,9 @@ them reasoning, zero usable output, 8.5 minutes wall clock, $0.017. There is no 
 problem. The lesson from that run was mechanical, not financial — do not retry a deterministic
 failure, and warn before a reasoning model is chosen for planning.
 
-## 9. Test baseline
+## 9. Verification status
 
-Green at pause, on the uncommitted tree:
+Previously green on the pre-integration tree:
 
 - Python: `545 passed, 3 skipped`
 - Node: `test:main` 72, `test:renderer` 30, `test:zernio` 128, `test:bridge` 35, `test:release` 23
@@ -287,20 +279,31 @@ Two planner tests were added for the retry fix and one existing test
 (`test_empty_content_is_retryable`) asserted the *old, wrong* behaviour and was rewritten — see
 `test_a_spent_output_budget_is_not_retried`.
 
+For `ours/upstream-overlay`, TypeScript typecheck passes and the edited Python modules compile.
+Automated tests have not been run on this integration branch.
+
 ## 10. Resuming
 
 1. Read this file, then `docs/UPSTREAM_SYNC.md` for push policy.
-2. The original 48-entry tree is preserved in local commit `27fd4da` on
-   `ours/ui-overhaul`. The B1–B3 fixes and related documentation remain uncommitted; do not push
-   without owner approval.
-3. B1 and B2 were fixed locally and tested. The original cause of the picker interaction remains
-   unverified, but the stale paid-model path is closed.
-4. B3 was diagnosed from the existing full engine log and its HTTP 404 now gets an actionable
-   message. No new paid run was necessary.
-5. B4 next on its own: center both detected people in the stacked panels and keep faces whole;
-   then re-evaluate B5/B6 against the result.
-6. Rebase `ours/ui-overhaul` onto the fetched `upstream/main` after reviewing B4. Keep upstream's
-   updater and other owner changes; let its local-ASR removal stand; restore only the selected
-   source cache, folder, resolution, concurrency, and model-selection features. Drop NVENC.
-7. Re-run the section 9 verification matrix on the rebased overlay. Do not push without owner
-   approval.
+2. `ours/ui-overhaul` at `ce653d5` preserves the prior overlay. `ours/upstream-overlay` is based
+   on upstream v0.1.18 and contains replayed preservation and B1-B3 fix commits.
+3. Cache, folder, resolution, concurrency, optional cloud model selection, and workflow settings
+   are being restored selectively. Local ASR and GPU encoding are excluded.
+4. Current integration edits are uncommitted. B4 remains open: confirm that a real vision response
+   includes two usable person rectangles, then compare the new output with the same source clip.
+5. GitHub issue #54 and its remote feature branch still describe local GPU transcription. Decide
+   separately whether to close or rewrite them; no GitHub change has been made.
+6. Finish review and requested verification before any push. Do not push without owner approval.
+
+
+### Source-cache reuse fix (2026-09-26)
+
+Confirmed both saved sources in `Y:/cache/bridge`. The downloader previously
+requested YouTube metadata before checking the cache, so a bot challenge could
+prevent reuse even at the same resolution. It now checks the cache first and
+reads duration, dimensions and FPS with local ffprobe. A cached 2160p source is
+also reused when 1080p is selected; the download ceiling applies to new downloads.
+A cached source below the requested resolution still triggers a new download.
+Verified: 23 source-cache tests pass. Real cached files were reused with YouTube
+metadata requests explicitly forbidden: 2160p at selections 1080/2160, and 720p
+at selection 720. No full transcription/render run was performed for this fix.

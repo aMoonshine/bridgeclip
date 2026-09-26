@@ -14,6 +14,7 @@ import type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
 import type { Automation, AutomationUpdate, AutomationTikTokReview, AutomationTikTokReviewUpdate } from '../shared/automations'
 import type { OpenRouterCatalog } from '../shared/openrouter-models'
 import type { UpdateState } from '../shared/updates'
+import type { SourceCacheInfo } from '../shared/source-cache'
 
 export interface ClipSettings {
   openrouterConfigured: boolean
@@ -21,6 +22,9 @@ export interface ClipSettings {
   outputDirectory: string
   pythonPath: string
   customVocabulary: string
+  downloadResolution: 'source' | '2160' | '1440' | '1080' | '720'
+  renderConcurrency: number
+  sourceCacheDirectory: string
 }
 
 export type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
@@ -73,6 +77,7 @@ export interface BridgeClipAPI {
     save: (settings: ClipSettings) => Promise<ClipSettings>
     replaceApiKey: (key: 'openrouterApiKey' | 'zernioApiKey', value: string) => Promise<ClipSettings>
     selectOutputDir: () => Promise<string | null>
+    selectSourceCacheDir: () => Promise<string | null>
   }
   zernio: {
     overview: () => Promise<ZernioOverview>
@@ -144,6 +149,8 @@ export interface BridgeClipAPI {
   system: {
     isPackaged: () => Promise<boolean>
     checkTools: () => Promise<ToolStatus>
+    sourceCache: () => Promise<SourceCacheInfo>
+    deleteCachedSource: (key: string) => Promise<SourceCacheInfo>
   }
   diagnostics: {
     getLogPath: () => Promise<string>
@@ -191,7 +198,8 @@ const api: BridgeClipAPI = {
     load: () => ipcRenderer.invoke('settings:load'),
     save: (settings) => ipcRenderer.invoke('settings:save', settings),
     replaceApiKey: (key, value) => ipcRenderer.invoke('settings:replaceApiKey', key, value),
-    selectOutputDir: () => ipcRenderer.invoke('settings:selectOutputDir')
+    selectOutputDir: () => ipcRenderer.invoke('settings:selectOutputDir'),
+    selectSourceCacheDir: () => ipcRenderer.invoke('settings:selectSourceCacheDir')
   },
   zernio: {
     overview: () => ipcRenderer.invoke('zernio:overview'),
@@ -246,7 +254,9 @@ const api: BridgeClipAPI = {
   },
   system: {
     isPackaged: () => ipcRenderer.invoke('system:isPackaged'),
-    checkTools: () => ipcRenderer.invoke('system:checkTools')
+    checkTools: () => ipcRenderer.invoke('system:checkTools'),
+    sourceCache: () => ipcRenderer.invoke('system:sourceCache'),
+    deleteCachedSource: (key) => ipcRenderer.invoke('system:deleteCachedSource', key)
   },
   diagnostics: {
     getLogPath: () => ipcRenderer.invoke('diagnostics:getLogPath'),

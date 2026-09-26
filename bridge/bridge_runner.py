@@ -173,21 +173,24 @@ async def run(config: dict) -> bool:
     os.environ["YTDLP_PROXY"] = ""
     os.environ["LAYOUT_VISION_ENABLED"] = "true" if config["layout_vision_enabled"] else "false"
     os.environ["CLIPPING_MODE"] = config.get("clipping_mode", "quality")
-    if config.get("clipping_mode", "quality") == "economy":
-        # Each job has its own bridge process, so model choices cannot leak to
-        # another queued or concurrent run. Do not fall back to higher-cost planners.
-        os.environ["PLANNER_MODEL"] = "z-ai/glm-5.3-flash"
-        os.environ["PLANNER_FALLBACK_MODELS"] = ""
-        os.environ["LAYOUT_VISION_ENABLED"] = "false"
-    elif config.get("clipping_mode") == "advanced":
+    os.environ.pop("TRANSCRIPTION_MODEL_OVERRIDE", None)
+    os.environ.pop("ADVANCED_TRANSCRIPTION_MODEL", None)
+    if config.get("planner_model"):
         os.environ["PLANNER_MODEL"] = config["planner_model"]
         os.environ["PLANNER_FALLBACK_MODELS"] = ""
-        os.environ["ADVANCED_TRANSCRIPTION_MODEL"] = config["transcription_model"]
         os.environ["PLANNER_MAX_OUTPUT_TOKENS"] = str(config.get("planner_max_output_tokens", 32000))
         os.environ["PLANNER_SUPPORTS_IMAGES"] = str(config.get("planner_supports_images", False)).lower()
         for name in ("planner_input_price", "planner_output_price"):
             if config.get(name) is not None:
                 os.environ[name.upper()] = str(config[name])
+    if config.get("transcription_model"):
+        os.environ["TRANSCRIPTION_MODEL_OVERRIDE"] = config["transcription_model"]
+    if config.get("clipping_mode", "quality") == "economy" and not config.get("planner_model"):
+        # Each job has its own bridge process, so model choices cannot leak to
+        # another queued or concurrent run. Do not fall back to higher-cost planners.
+        os.environ["PLANNER_MODEL"] = "z-ai/glm-5.3-flash"
+        os.environ["PLANNER_FALLBACK_MODELS"] = ""
+        os.environ["LAYOUT_VISION_ENABLED"] = "false"
 
     from network_guard import install as install_network_guard
     install_network_guard()
@@ -332,13 +335,13 @@ def validate_config(config: object) -> dict:
         raise ValueError("Video speed must be between 1x and 2x")
     if config.get("clipping_mode", "quality") not in ("quality", "economy", "advanced"):
         raise ValueError("Invalid clipping mode")
+    model_pattern = r"~?[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:-]*"
     for field in ("planner_model", "transcription_model"):
-        if config.get("clipping_mode") == "advanced":
-            value = config.get(field)
-            if not isinstance(value, str) or len(value) > 120 or not re.fullmatch(r"~?[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:-]*", value):
-                raise ValueError("Choose both models in Advanced mode")
-        elif field in config:
-            raise ValueError("Custom models require Advanced mode")
+        value = config.get(field)
+        if value is not None and (not isinstance(value, str) or len(value) > 120 or not re.fullmatch(model_pattern, value)):
+            raise ValueError(f"Invalid {field}")
+    if config.get("clipping_mode") == "advanced" and (not config.get("planner_model") or not config.get("transcription_model")):
+        raise ValueError("Choose both models in Advanced mode")
     if "planner_max_output_tokens" in config and (type(config["planner_max_output_tokens"]) is not int or not 1 <= config["planner_max_output_tokens"] <= 32000):
         raise ValueError("Invalid planner output limit")
     if "planner_supports_images" in config and type(config["planner_supports_images"]) is not bool:

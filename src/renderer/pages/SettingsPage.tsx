@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ArrowUpRight, BookA, Check, ChevronDown, Cpu, FolderOpen, Github, Info, KeyRound, Loader2, RefreshCw, ScrollText } from 'lucide-react'
+import { ArrowUpRight, BookA, Check, ChevronDown, Cpu, FolderOpen, Github, Info, KeyRound, Loader2, RefreshCw, ScrollText, Zap } from 'lucide-react'
 import { useSettingsStore } from '../store/use-settings-store'
 import { useApiKeyDrafts } from '../hooks/use-api-key-drafts'
 import { getApi } from '../lib/ipc'
@@ -17,13 +17,15 @@ import { Badge, StatusDot } from '../components/ui/Badge'
 import { IconTile } from '../components/ui/IconTile'
 import { Callout } from '../components/ui/Callout'
 import { UpdatesRow } from '../components/Updates'
+import { VideoSettings } from '../components/VideoSettings'
+import { SourceCacheSettings } from '../components/SourceCacheSettings'
 
-type SectionId = 'keys' | 'vocabulary' | 'output' | 'system' | 'about'
+type SectionId = 'keys' | 'video' | 'vocabulary' | 'output' | 'system' | 'about'
 type SectionTone = 'success' | 'warning' | 'danger' | 'idle'
 
 /** `showUpdates` changes each time Help → Check for Updates… asks for the Updates row. */
 export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): React.JSX.Element {
-  const { outputDirectory, pythonPath, customVocabulary, openrouterConfigured, zernioConfigured, saving, save, toolStatus, toolError, checkTools, checkingTools } =
+  const { outputDirectory, pythonPath, customVocabulary, downloadResolution, renderConcurrency, sourceCacheDirectory, sourceCache, deletingSource, refreshSourceCache, deleteCachedSource, openrouterConfigured, zernioConfigured, saving, save, toolStatus, toolError, checkTools, checkingTools } =
     useSettingsStore()
   const keys = useApiKeyDrafts()
   const [isPackaged, setIsPackaged] = useState(true)
@@ -33,6 +35,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
   useEffect(() => {
     getApi().system.isPackaged().then(setIsPackaged).catch(() => {})
   }, [])
+
 
   const commit = async (patch: Partial<ClipSettings>, recheck = false): Promise<void> => {
     try {
@@ -55,6 +58,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
 
   const sections: { id: SectionId; label: string; icon: ReactNode; tone: SectionTone }[] = [
     { id: 'keys', label: 'API keys', icon: <KeyRound />, tone: keysMissing ? 'warning' : 'success' },
+    { id: 'video', label: 'Video', icon: <Zap />, tone: 'idle' },
     { id: 'vocabulary', label: 'Vocabulary', icon: <BookA />, tone: 'idle' },
     { id: 'output', label: 'Output', icon: <FolderOpen />, tone: 'idle' },
     { id: 'system', label: 'System check', icon: <Cpu />, tone: !toolsChecked ? 'idle' : toolsMissing ? 'danger' : 'success' },
@@ -179,6 +183,22 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
               action={vocabularyTerms > 0 && <Badge className="font-mono tabular">{vocabularyTerms} term{vocabularyTerms === 1 ? '' : 's'}</Badge>}
             />
             <VocabularyField value={customVocabulary} onCommit={(value) => commit({ customVocabulary: value })} />
+          </Section>
+
+          <Section id="video">
+            <VideoSettings
+              downloadResolution={downloadResolution}
+              renderConcurrency={renderConcurrency}
+              onCommit={(patch) => void commit(patch)}
+            />
+            <SourceCacheSettings
+              cache={sourceCache}
+              directory={sourceCacheDirectory}
+              deleting={deletingSource}
+              onRefresh={refreshSourceCache}
+              onDelete={(key) => void deleteCachedSource(key)}
+              onDirectory={(dir) => commit({ sourceCacheDirectory: dir }, true)}
+            />
           </Section>
 
           <Section id="output">

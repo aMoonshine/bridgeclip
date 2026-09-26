@@ -13,12 +13,6 @@ const RESOLUTION_OPTIONS: SelectOption[] = [
   { value: '720', label: 'Up to 720p', detail: 'Smallest download, soft on a tight crop' }
 ]
 
-const ENCODER_OPTIONS: SelectOption[] = [
-  { value: 'cpu', label: 'Processor', detail: 'Software encoding. Highest quality per bit, no GPU needed' },
-  { value: 'nvenc', label: 'Graphics card (NVENC)', detail: 'NVIDIA hardware encoder. Needs an NVIDIA GPU with a working driver' },
-  { value: 'auto', label: 'Automatic', detail: 'Use the graphics card when it works, otherwise the processor' }
-]
-
 const CONCURRENCY_OPTIONS: SelectOption[] = [
   { value: '0', label: 'Automatic', detail: 'Sized from the number of processor cores' },
   { value: '1', label: '1 clip at a time', detail: 'Slowest, gentlest on the provider rate limit' },
@@ -29,34 +23,28 @@ const CONCURRENCY_OPTIONS: SelectOption[] = [
 ]
 
 /**
- * Choose how the source is downloaded, how clips are encoded, and how many run
- * at once.
+ * Choose the source download limit and how many clips run at once.
  *
- * These three trade against each other on purpose. A lower source ceiling makes
- * the download faster but softens a crop into a face. Encoding on the graphics
- * card frees the processor, which only pays off once several clips run at once.
- * A higher clip count shortens the run but sends more vision requests at the
- * provider at the same time.
+ * A lower source ceiling makes the download faster but softens a crop into a
+ * face. A higher clip count shortens the run but sends more vision requests at
+ * the provider at the same time.
  */
 export function VideoSettings({
   downloadResolution,
-  videoEncoder,
   renderConcurrency,
   onCommit
 }: {
   downloadResolution: ClipSettings['downloadResolution']
-  videoEncoder: ClipSettings['videoEncoder']
   renderConcurrency: number
   onCommit: (patch: Partial<ClipSettings>) => void
 }): React.JSX.Element {
-  const encoder = videoEncoder
   const concurrency = String(renderConcurrency)
 
   return <Panel>
     <PanelHeader
       icon={<IconTile tone="neutral"><Zap /></IconTile>}
       title="Video and performance"
-      description="Control download size, which device encodes the clips, and how many run at once."
+      description="Control the source download size and how many clips run at once."
     />
 
     <div className="mt-4 grid gap-4">
@@ -70,19 +58,6 @@ export function VideoSettings({
           value={downloadResolution}
           onChange={(value) => onCommit({ downloadResolution: value as ClipSettings['downloadResolution'] })}
           options={RESOLUTION_OPTIONS}
-        />
-      </Field>
-
-      <Field
-        label="Encode clips with"
-        htmlFor="video-encoder"
-        hint="The graphics card is faster for long clips. On short clips its setup costs about what it saves, and it needs an NVIDIA GPU."
-      >
-        <Select
-          id="video-encoder"
-          value={encoder}
-          onChange={(value) => onCommit({ videoEncoder: value as ClipSettings['videoEncoder'] })}
-          options={ENCODER_OPTIONS}
         />
       </Field>
 

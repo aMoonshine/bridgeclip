@@ -61,7 +61,8 @@ export function buildJobRequest(draft: ClipDraft, trim: { start: number | null; 
   return {
     videoUrl: normalizeVideoSource(draft.source),
     clippingMode: draft.clippingMode,
-    ...(draft.clippingMode === 'advanced' ? { plannerModel: draft.plannerModel, transcriptionModel: draft.transcriptionModel } : {}),
+    ...(draft.plannerModel ? { plannerModel: draft.plannerModel } : {}),
+    ...(draft.transcriptionModel ? { transcriptionModel: draft.transcriptionModel } : {}),
     maxClips: draft.autoClipCount ? null : draft.maxClips,
     autoClipCount: draft.autoClipCount,
     durationRanges: draft.durations.length > 0 ? draft.durations : null,
@@ -406,8 +407,8 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
             </button>
           })}
         </div>
-        {draft.clippingMode === 'advanced' ? <AdvancedModels draft={draft} update={update} /> :
-          <p className="mt-2 text-2xs text-ink-subtle">Economy uses lower-cost models and skips paid vision checks. Transcription retries temporary errors and can fall back to Whisper Large V3, then MAI Transcribe 2. Clip choices and captions may be less accurate.</p>}
+        <AdvancedModels draft={draft} update={update} required={draft.clippingMode === 'advanced'} />
+        {draft.clippingMode !== 'advanced' && <p className="mt-2 text-2xs text-ink-subtle">Leave either choice empty to use the {draft.clippingMode === 'economy' ? 'lower-cost' : 'quality'} preset. A custom choice is used as selected without switching models.</p>}
       </Group>
       <Group label="Clip length" aside={draft.durations.length === 0 ? 'Any length' : `${draft.durations.length} selected`}>
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7" role="group" aria-label="Clip length options">
@@ -521,9 +522,10 @@ function ReviewStep({ draft, trim, onEdit }: {
     { step: 'clips', label: 'Clips', value: `${lengths}${(draft.videoSpeed ?? 1) > 1 && draft.durations.length > 0 ? ' of source footage' : ''} · ${draft.autoClipCount ? 'AI decides how many' : `Up to ${draft.maxClips}`}` },
     { step: 'captions', label: 'Captions', value: draft.includeCaptions ? CAPTION_PRESET_NAMES[draft.captionPreset] ?? draft.captionPreset : 'Off' }
   ]
-  if (draft.clippingMode === 'advanced') rows.splice(5, 0,
-    { step: 'clips', label: 'Transcribe', value: draft.transcriptionModel || 'Choose a model' },
-    { step: 'clips', label: 'Plan', value: draft.plannerModel || 'Choose a model' })
+  if (draft.transcriptionModel) rows.splice(5, 0,
+    { step: 'clips', label: 'Transcribe', value: draft.transcriptionModel })
+  if (draft.plannerModel) rows.splice(5, 0,
+    { step: 'clips', label: 'Plan', value: draft.plannerModel })
 
   return (
     <div className="space-y-3">
@@ -580,10 +582,11 @@ function StartedPanel({ className, onViewJob }: { className?: string; onViewJob?
   )
 }
 
-function AdvancedModels({ draft, update }: { draft: ClipDraft; update: Update }): React.JSX.Element {
+function AdvancedModels({ draft, update, required }: { draft: ClipDraft; update: Update; required: boolean }): React.JSX.Element {
   const { catalog, loading, error, load } = useModelStore()
   useEffect(() => { void load() }, [load])
   return <div className="mt-3 space-y-4 rounded-xl border border-white/10 p-3">
+    <p className="text-2xs text-ink-subtle">{required ? 'Choose both models for Advanced mode.' : 'Optional model overrides. Leave blank to use the selected mode defaults.'}</p>
     <div className="flex items-center justify-between gap-3">
       <p className="text-xs text-ink-muted">Search OpenRouter’s live model catalog.</p>
       <Button size="sm" variant="ghost" loading={loading} disabled={loading} onClick={() => void load(true)}>Refresh models</Button>

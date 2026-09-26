@@ -81,12 +81,18 @@ export async function getModelCatalog(refresh: unknown = false): Promise<OpenRou
   try { return await pending } finally { pending = null }
 }
 
-export async function resolveAdvancedModels(plannerId: string, transcriptionId: string): Promise<OpenRouterModel> {
+export async function resolveModel(task: ModelTask, id: string): Promise<OpenRouterModel> {
   const catalog = await getModelCatalog()
-  for (const [task, id] of [['planning', plannerId], ['transcription', transcriptionId]] as const) {
-    const model = catalog[task].find((item) => item.id === id)
-    if (!model) throw new Error(`The selected ${task} model is no longer listed. Refresh the models in Advanced mode.`)
-    if (model.unavailableReason) throw new Error(model.unavailableReason)
-  }
-  return catalog.planning.find((item) => item.id === plannerId)!
+  const model = catalog[task].find((item) => item.id === id)
+  if (!model) throw new Error(`The selected ${task} model is no longer listed. Refresh the model list.`)
+  if (model.unavailableReason) throw new Error(model.unavailableReason)
+  return model
+}
+
+export async function resolveAdvancedModels(plannerId: string, transcriptionId: string): Promise<OpenRouterModel> {
+  const [planner] = await Promise.all([
+    resolveModel('planning', plannerId),
+    resolveModel('transcription', transcriptionId)
+  ])
+  return planner
 }

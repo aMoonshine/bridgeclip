@@ -1,6 +1,6 @@
 import { app, safeStorage } from 'electron'
-import { closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
-import { isAbsolute, join } from 'path'
+import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
+import { isAbsolute, join, relative as pathRelative } from 'path'
 import { randomUUID } from 'crypto'
 
 /**
@@ -16,26 +16,35 @@ export interface AppSettings {
   pythonPath: string
   /** Names and jargon the speech-to-text should spell correctly, one per line. */
   customVocabulary: string
+  downloadResolution: 'source' | '2160' | '1440' | '1080' | '720'
+  renderConcurrency: number
+  sourceCacheDirectory: string
 }
 
 export type ApiKeyName = 'openrouterApiKey' | 'zernioApiKey'
-export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary'> & {
+export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory'> & {
   openrouterConfigured: boolean
   zernioConfigured: boolean
 }
 
 const SECRET_KEYS = ['openrouterApiKey', 'zernioApiKey'] as const
 type SecretKey = (typeof SECRET_KEYS)[number]
+const DOWNLOAD_RESOLUTIONS = ['source', '2160', '1440', '1080', '720'] as const
+const MAX_RENDER_CONCURRENCY = 8
+const DEFAULT_SOURCE_CACHE_BUDGET_BYTES = 20 * 1000 ** 3
 
 const DEFAULT_SETTINGS: AppSettings = {
   openrouterApiKey: '',
   zernioApiKey: '',
   outputDirectory: join(app.getPath('home'), 'BridgeClip'),
   pythonPath: process.platform === 'win32' ? 'python' : 'python3',
-  customVocabulary: ''
+  customVocabulary: '',
+  downloadResolution: 'source',
+  renderConcurrency: 0,
+  sourceCacheDirectory: join(app.getPath('userData'), 'sources')
 }
 
-const SETTINGS_VERSION = 7
+const SETTINGS_VERSION = 8
 
 type PersistedSecret = { scheme: 'safeStorage' | 'base64'; value: string } | ''
 
@@ -46,6 +55,9 @@ interface PersistedSettings {
   outputDirectory: string
   pythonPath: string
   customVocabulary?: string
+  downloadResolution?: string
+  renderConcurrency?: number
+  sourceCacheDirectory?: string
 }
 
 function ensureDir(dir: string): string {
@@ -59,9 +71,37 @@ function getSettingsPath(): string {
   return join(ensureDir(app.getPath('userData')), 'settings.json')
 }
 
+function normalizeConcurrency(value: unknown): number {
+  const count = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(count) || count <= 0) return DEFAULT_SETTINGS.renderConcurrency
+  return Math.min(Math.trunc(count), MAX_RENDER_CONCURRENCY)
+}
+
+function normalizeCacheDirectory(value: unknown): string {
+  const dir = typeof value === 'string' ? value.trim() : ''
+  if (!dir) return DEFAULT_SETTINGS.sourceCacheDirectory
+  if (!isAbsolute(dir)) throw new Error('The sources folder must be an absolute path')
+  const workRoot = join(app.getPath('userData'), 'work')
+  const fromWork = pathRelative(workRoot, dir)
+  if (fromWork === '' || (!fromWork.startsWith('..') && !isAbsolute(fromWork))) {
+    throw new Error("The sources folder cannot be inside BridgeClip's work folder")
+  }
+  return dir
+}
+
+export function ensureSourceCacheDir(): string {
+  const configured = loadSettings().sourceCacheDirectory || DEFAULT_SETTINGS.sourceCacheDirectory
+  if (!existsSync(configured)) mkdirSync(configured, { recursive: true, mode: 0o700 })
+  const stat = lstatSync(configured)
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Invalid source cache directory')
+  chmodSync(configured, 0o700)
+  return configured
+}
+
 function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
   if (!settings || typeof settings !== 'object') throw new Error('Invalid settings')
   for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AppSettings)[]) {
+    if (key === 'renderConcurrency') continue
     if (settings[key] !== undefined && (typeof settings[key] !== 'string' || settings[key]!.length > 8192 || settings[key]!.includes('\0'))) throw new Error(`Invalid ${key}`)
   }
   const normalized: AppSettings = {
@@ -69,7 +109,11 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     zernioApiKey: (settings.zernioApiKey ?? DEFAULT_SETTINGS.zernioApiKey).trim(),
     outputDirectory: (settings.outputDirectory || DEFAULT_SETTINGS.outputDirectory).trim(),
     pythonPath: (settings.pythonPath || DEFAULT_SETTINGS.pythonPath).trim(),
-    customVocabulary: vocabularyTerms(settings.customVocabulary ?? DEFAULT_SETTINGS.customVocabulary).join('\n')
+    customVocabulary: vocabularyTerms(settings.customVocabulary ?? DEFAULT_SETTINGS.customVocabulary).join('\n'),
+    downloadResolution: (DOWNLOAD_RESOLUTIONS as readonly string[]).includes(settings.downloadResolution ?? '')
+      ? settings.downloadResolution as AppSettings['downloadResolution'] : DEFAULT_SETTINGS.downloadResolution,
+    renderConcurrency: normalizeConcurrency(settings.renderConcurrency),
+    sourceCacheDirectory: normalizeCacheDirectory(settings.sourceCacheDirectory ?? DEFAULT_SETTINGS.sourceCacheDirectory)
   }
   normalized.outputDirectory ||= DEFAULT_SETTINGS.outputDirectory
   normalized.pythonPath ||= DEFAULT_SETTINGS.pythonPath
@@ -142,7 +186,10 @@ export function loadSettings(): AppSettings {
       ...secrets,
       outputDirectory: typeof raw.outputDirectory === 'string' ? raw.outputDirectory : DEFAULT_SETTINGS.outputDirectory,
       pythonPath: typeof raw.pythonPath === 'string' ? raw.pythonPath : DEFAULT_SETTINGS.pythonPath,
-      customVocabulary: typeof raw.customVocabulary === 'string' ? raw.customVocabulary : DEFAULT_SETTINGS.customVocabulary
+      customVocabulary: typeof raw.customVocabulary === 'string' ? raw.customVocabulary : DEFAULT_SETTINGS.customVocabulary,
+      downloadResolution: typeof raw.downloadResolution === 'string' ? raw.downloadResolution : DEFAULT_SETTINGS.downloadResolution,
+      renderConcurrency: typeof raw.renderConcurrency === 'number' ? raw.renderConcurrency : DEFAULT_SETTINGS.renderConcurrency,
+      sourceCacheDirectory: typeof raw.sourceCacheDirectory === 'string' ? raw.sourceCacheDirectory : DEFAULT_SETTINGS.sourceCacheDirectory
     })
 
     if (needsMigration && canEncrypt()) writeSettings(settings)
@@ -162,7 +209,10 @@ function writeSettings(settings: AppSettings): void {
     zernioApiKey: encodeSecret(settings.zernioApiKey),
     outputDirectory: settings.outputDirectory,
     pythonPath: settings.pythonPath,
-    customVocabulary: settings.customVocabulary
+    customVocabulary: settings.customVocabulary,
+    downloadResolution: settings.downloadResolution,
+    renderConcurrency: settings.renderConcurrency,
+    sourceCacheDirectory: settings.sourceCacheDirectory
   }
 
   let fd: number | undefined
@@ -190,18 +240,26 @@ export function publicSettings(settings: AppSettings): PublicSettings {
     outputDirectory: settings.outputDirectory,
     pythonPath: settings.pythonPath,
     customVocabulary: settings.customVocabulary,
+    downloadResolution: settings.downloadResolution,
+    renderConcurrency: settings.renderConcurrency,
+    sourceCacheDirectory: settings.sourceCacheDirectory,
     openrouterConfigured: Boolean(settings.openrouterApiKey),
     zernioConfigured: Boolean(settings.zernioApiKey)
   }
 }
 
-export function savePublicSettings(update: Pick<PublicSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary'>): PublicSettings {
+export type PublicSettingsUpdate = Partial<Pick<PublicSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory'>>
+
+export function savePublicSettings(update: PublicSettingsUpdate): PublicSettings {
   const current = loadSettings()
   return publicSettings(saveSettings({
     ...current,
-    outputDirectory: update.outputDirectory,
-    pythonPath: update.pythonPath,
-    customVocabulary: update.customVocabulary
+    outputDirectory: update.outputDirectory ?? current.outputDirectory,
+    pythonPath: update.pythonPath ?? current.pythonPath,
+    customVocabulary: update.customVocabulary ?? current.customVocabulary,
+    downloadResolution: update.downloadResolution ?? current.downloadResolution,
+    renderConcurrency: update.renderConcurrency ?? current.renderConcurrency,
+    sourceCacheDirectory: update.sourceCacheDirectory ?? current.sourceCacheDirectory
   }))
 }
 
@@ -235,6 +293,10 @@ export function getSettingsForBridge(settings: AppSettings): Record<string, stri
   return {
     OPENROUTER_API_KEY: settings.openrouterApiKey,
     LOCAL_MODE: 'true',
-    LOCAL_OUTPUT_DIR: settings.outputDirectory
+    LOCAL_OUTPUT_DIR: settings.outputDirectory,
+    DOWNLOAD_RESOLUTION: settings.downloadResolution,
+    RENDER_CONCURRENCY: String(settings.renderConcurrency),
+    BRIDGECLIP_SOURCE_CACHE: ensureSourceCacheDir(),
+    SOURCE_CACHE_BUDGET_BYTES: String(DEFAULT_SOURCE_CACHE_BUDGET_BYTES)
   }
 }

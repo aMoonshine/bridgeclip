@@ -667,6 +667,7 @@ class Settings(BaseSettings):
     # Selected by the desktop bridge per process before settings are loaded.
     clipping_mode: Literal["quality", "economy", "advanced"] = "quality"
     advanced_transcription_model: str = ""
+    transcription_model_override: str = ""
     planner_supports_images: bool = True
     planner_input_price: Optional[float] = None
     planner_output_price: Optional[float] = None
@@ -831,6 +832,8 @@ class Settings(BaseSettings):
 
     @property
     def transcription_model(self) -> str:
+        if self.transcription_model_override:
+            return self.transcription_model_override
         if self.clipping_mode == "advanced":
             if not self.advanced_transcription_model:
                 raise ValueError("Choose a transcription model in Advanced mode")

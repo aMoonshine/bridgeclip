@@ -1,71 +1,65 @@
 # Upstream synchronization
 
-## Current verified state
+## Branches and remotes
 
-- Canonical checkout: `Y:\ProjectsAI\bridgeclip`
-- Current branch at this documentation baseline: `main`
-- HEAD: `6407bf3b89e6d7c6f84e4c5d156adb9f17ac46d5`
-- Product remote: `origin` = `aMoonshine/bridgeclip`
-- Upstream remote: `upstream` = `bridge-mind/bridgeclip`
-- Rollback source: none. The former `D:\!!!\Documents\ChatGPT\LinkedIn\bridgeclip` checkout was removed by
-  owner decision; recover through `origin` = `aMoonshine/bridgeclip` instead.
+- `upstream` = `https://github.com/bridge-mind/bridgeclip.git`, read-only.
+- `origin` = `https://github.com/aMoonshine/bridgeclip.git`, our fork.
+- `main` is the local mirror of the fetched upstream base.
+- `ours/upstream-overlay` is the current application branch, based on upstream
+  `f6c722672d10b04b2bc93b1e253697477d5fc6b1` (v0.1.18). Run the app from this branch.
+- `ours/ui-overhaul` at `ce653d5` preserves the previous implementation.
+- `codex/archive-main-2026-09-26` preserves the former local main at `a217f87`.
+- `origin/main` still contains legacy fork history. It is not yet an upstream
+  mirror. Do not force-push it; migrating the remote default branch is a separate action.
 
-Todo 3 made the target history complete and fetched both remotes non-destructively. At that evidence point, local `main` matched `origin/main`; it was three commits ahead and nine behind `upstream/main`. No upstream commit was merged. Remote heads and branch-protection state are point-in-time facts and must be fetched again before any sync.
+The owner authorized saving the current overlay to their GitHub fork on 2026-09-26.
+Saving a work checkpoint does not certify a release. Framing remains visually
+unverified; see `FORK_DECISIONS_AND_BACKLOG.md` for verification and open bugs.
 
-## Remote roles
+## Update workflow
 
-- `origin` is the only product remote authorized for BridgeClip feature branches and later owner-approved pushes.
-- `upstream` is read-only. Fetching and comparing it is allowed; pushing, opening upstream PRs, changing upstream settings, or treating it as the product home is not authorized by this plan.
-- Do not create a second GitHub repository, replace either remote, or change remote URLs as part of synchronization.
+Keep fork features as commits above the upstream base. Never rewrite a published
+branch: rebase a new versioned branch and publish that branch normally. The old
+branch remains the rollback point. This reconciles replaying our changes with
+preserving published history, without force-pushes.
 
-## Branch policy
+1. Commit current work; require a clean working tree.
+2. Fetch `upstream` and `origin`. Review upstream release notes and diff.
+3. Record the old upstream base and create `codex/overlay-<version>` from the
+   current application branch.
+4. Run `git rebase --onto <new-upstream-sha> <old-upstream-sha>` on that new branch.
+   Resolve conflicts while preserving the useful features below. Use
+   `git rebase --abort` if integration cannot be completed safely.
+5. Review `git range-diff <old-base>..<old-overlay> <new-base>..HEAD` to check that
+   no fork feature was lost. Drop a local patch only when upstream covers it.
+6. Run scoped engine/bridge tests, typecheck, lint and build; check the UI and a
+   real framing example. Verify cache reuse without a YouTube request, resolution
+   limits for new downloads, settings persistence and mode/model switching.
+7. Publish the new branch to `origin` with `git push -u origin HEAD`. Record the
+   new application branch and upstream SHA in both project documents.
+8. Fast-forward local `main` with `git branch -f main <new-upstream-sha>` only
+   after checking ancestry and confirming main is not checked out elsewhere.
+   Run the application from the overlay branch, never the mirror.
 
-Superseded on 2026-09-26 by decision D5 in [Fork decisions](FORK_DECISIONS_AND_BACKLOG.md). The
-topology is now three roles:
+Do not push to upstream or create upstream PRs. Do not publish releases or move
+release tags as part of routine sync. Use immutable tags on verified overlay
+commits for future builds; no separate release branch is required yet.
 
-- `main` mirrors `upstream/main` and never receives fork commits. Update with `git fetch upstream && git reset --hard upstream/main`.
-- `ours/ui-overhaul` is the long-lived overlay holding all fork features. It is **rebased** onto a fresh `upstream/main`, not merged, so conflicts surface once at the moment upstream lands.
-- `ours/release` is the tagged build line, receiving merges from `ours/ui-overhaul`.
+## Features to retain and verify
 
-Retained from the previous policy:
+- Downloaded-source cache, source-folder picker and offline reuse of saved media.
+- Output-folder selection and download-resolution controls.
+- Hosted model selection and reset to defaults when clipping mode changes.
+- Render concurrency, 24-hour time and title-card removal.
+- Windows double-click launcher (`start-windows.cmd`).
+- Framing fixes only after visual verification; current person-box patch is provisional.
 
-- Do not merge upstream into a dirty branch, and never rewrite published history.
-- Never push to `upstream`, and never force-push to `origin`.
-- A pre-existing local `codex/upstream-sync` ref is not proof of an approved sync. Review it independently before reuse.
+Cloud transcription is the supported path; do not restore local ASR, diarization
+or optional NVENC controls during conflict resolution.
 
-## Fetch, compare, test, and merge order
+## Files outside Git
 
-These commands are the required future order. Do not run the merge steps until the preceding review is recorded.
-
-```powershell
-git status --short --branch --untracked-files=all
-git fetch --prune origin
-git fetch --prune upstream
-git rev-parse HEAD
-git rev-parse origin/main
-git rev-parse upstream/main
-git rev-list --left-right --count origin/main...upstream/main
-git log --oneline --left-right --cherry-pick origin/main...upstream/main
-git diff --stat origin/main...upstream/main
-git diff --check origin/main...upstream/main
-```
-
-1. Confirm the canonical checkout and unchanged D: rollback source.
-2. Start or update the feature branch through the normal owner-approved workflow.
-3. Fetch both remotes and record exact remote HEADs; do not prune local work.
-4. Create the rebase point from a freshly fetched `origin/main` on `ours/ui-overhaul`.
-5. Compare history and diffs. Identify behavior, security, packaging, provider, and documentation conflicts before merging.
-6. Rebase `ours/ui-overhaul` onto `upstream/main`, resolving conflicts explicitly and preserving both sides' security/behavior intent. Do not merge upstream into `main`.
-7. Run the full offline verification set, including typecheck, lint, unit/integration tests, bridge and engine tests, build, packaging/resource checks, GPU fixture, provider mocks, migration/restart/crash tests, and secret scanning.
-8. Push only the reviewed feature/sync branch to `origin` after explicit owner approval.
-9. Merge to owner `main` only in a separate owner-approved step. Never push to `upstream`.
-
-## Prohibited operations
-
-- No force-push to either remote.
-- No direct upstream write or upstream release/tag action.
-- No history rewrite, tag movement/deletion, or release publication during sync.
-- No silent conflict resolution that drops upstream security fixes or local provider/GPU/portable constraints.
-- No paid provider/model calls as part of comparison or verification.
-
-See [Project status](PROJECT_STATUS.md) and [Open-source readiness](OPEN_SOURCE_READINESS.md).
+`comp2.conf` contains credentials and is ignored. Cached videos, Python/Node
+runtimes and dependencies are also outside Git. Preserve credentials separately
+in a private backup; clone plus dependency installation restores source tooling.
+Never create junctions for runtime or dependency directories in this checkout.

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, realpathSync } from 'fs'
-import { loadSettings, publicSettings, replaceApiKey, savePublicSettings, type ApiKeyName, type PublicSettings } from './settings-store'
+import { loadSettings, publicSettings, replaceApiKey, savePublicSettings, ensureSourceCacheDir, type ApiKeyName, type PublicSettings } from './settings-store'
 import { ensureOutputDir, getJobHistory, getJobOutput, generateThumbnail } from './file-manager'
 import {
   getEnginePath,
@@ -16,7 +16,8 @@ import { logger, getLogFilePath } from './logger'
 import { assertAbsolutePath, assertMediaPath, assertTrustedSender, authorizeMedia, isTrustedExternalUrl, isWebUrl, isWithinDirectory, openAuthorizedMedia } from './security'
 import { assertPublicWebUrl } from './network-policy'
 import { validateJobConfig } from './validation'
-import { getModelCatalog, resolveAdvancedModels } from './openrouter-models'
+import { getModelCatalog, resolveAdvancedModels, resolveModel } from './openrouter-models'
+import { deleteCachedSource, readSourceCache } from './source-cache'
 import { randomUUID } from 'crypto'
 import { resolveBinary, supportsCaptionFilter } from './tools'
 import { approveAutomationTikTokReview, prepareAutomationTikTokReview, addAutomationContent, addLibraryClipsToAutomation, createAutomation, deleteAutomation, isAutomationMedia, listAutomations, removeAutomationContent, runAutomation, updateAutomation, updateAutomationContent } from './automations'
@@ -142,6 +143,17 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     return result.filePaths[0]
   })
 
+  handle('settings:selectSourceCacheDir', async () => {
+    const window = getMainWindow()
+    if (!window) return null
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Choose Where Downloaded Sources Are Kept'
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
   handle('job:start', async (_event, config: ClipJobConfig) => {
     const window = getMainWindow()
     if (!window) {
@@ -151,9 +163,9 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
     try {
       config = validateJobConfig(config)
-      if (config.clippingMode === 'advanced') {
-        config.plannerCapabilities = await resolveAdvancedModels(config.plannerModel!, config.transcriptionModel!)
-      }
+      if (config.clippingMode === 'advanced') config.plannerCapabilities = await resolveAdvancedModels(config.plannerModel!, config.transcriptionModel!)
+      else if (config.plannerModel) config.plannerCapabilities = await resolveModel('planning', config.plannerModel)
+      if (config.clippingMode !== 'advanced' && config.transcriptionModel) await resolveModel('transcription', config.transcriptionModel)
       if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl)
       else assertMediaPath(config.videoUrl, loadSettings().outputDirectory)
       if (config.bannerChannelUrl) await assertPublicWebUrl(config.bannerChannelUrl)
@@ -352,6 +364,17 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
   handle('system:isPackaged', () => {
     return app.isPackaged
+  })
+
+  handle('system:sourceCache', async () => {
+    const settings = loadSettings()
+    return readSourceCache(settings.pythonPath, ensureSourceCacheDir())
+  })
+
+  handle('system:deleteCachedSource', async (_event, key: unknown) => {
+    if (typeof key !== 'string') throw new Error('Invalid source key')
+    const settings = loadSettings()
+    return deleteCachedSource(settings.pythonPath, ensureSourceCacheDir(), key)
   })
 
   handle('system:checkTools', async () => {

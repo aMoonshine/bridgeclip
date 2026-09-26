@@ -37,29 +37,6 @@ test('the chosen source ceiling reaches the engine', () => {
   })
 })
 
-test('the encoder choice is limited to the three documented values', () => {
-  withStore((store) => {
-    const fresh = store.publicSettings(store.loadSettings())
-    assert.equal(fresh.videoEncoder, 'cpu', 'encoding stays on the processor until asked otherwise')
-
-    for (const value of ['cpu', 'nvenc', 'auto']) {
-      store.savePublicSettings({ videoEncoder: value })
-      assert.equal(store.loadSettings().videoEncoder, value)
-    }
-    for (const value of ['', 'videotoolbox', 'qsv', 'h264_nvenc; calc']) {
-      store.savePublicSettings({ videoEncoder: value })
-      assert.equal(store.loadSettings().videoEncoder, 'cpu', value)
-    }
-  })
-})
-
-test('the encoder choice reaches the engine', () => {
-  withStore((store) => {
-    store.savePublicSettings({ videoEncoder: 'nvenc' })
-    assert.equal(store.getSettingsForBridge(store.loadSettings()).VIDEO_ENCODER, 'nvenc')
-  })
-})
-
 test('clip concurrency defaults to automatic and is clamped to a sane range', () => {
   withStore((store) => {
     const fresh = store.publicSettings(store.loadSettings())
@@ -88,22 +65,20 @@ test('the concurrency override reaches the engine as a string', () => {
   })
 })
 
-test('the three performance settings survive a save and reload together', () => {
+test('the download and concurrency settings survive a save and reload together', () => {
   withStore((store) => {
     store.savePublicSettings({
       downloadResolution: '1440',
-      videoEncoder: 'auto',
       renderConcurrency: 4
     })
     const reloaded = store.publicSettings(store.loadSettings())
     assert.equal(reloaded.downloadResolution, '1440')
-    assert.equal(reloaded.videoEncoder, 'auto')
     assert.equal(reloaded.renderConcurrency, 4)
 
     const env = store.getSettingsForBridge(store.loadSettings())
     assert.deepEqual(
-      { r: env.DOWNLOAD_RESOLUTION, e: env.VIDEO_ENCODER, c: env.RENDER_CONCURRENCY },
-      { r: '1440', e: 'auto', c: '4' }
+      { r: env.DOWNLOAD_RESOLUTION, c: env.RENDER_CONCURRENCY },
+      { r: '1440', c: '4' }
     )
   })
 })

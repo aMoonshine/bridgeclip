@@ -182,20 +182,19 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
     }
   })
 
-  test('the on-device speech model is offered and needs no provider id', () => {
+  test('model choices are optional outside Advanced and use the selected mode defaults', () => {
     const { ClipsStep, buildJobRequest } = form.exports
     const draft = {
       source: 'https://example.com/video', clippingMode: 'quality',
-      plannerModel: '', transcriptionModel: 'local',
+      plannerModel: '', transcriptionModel: '',
       aspectRatio: '9:16', layoutStyle: 'auto', layoutVision: true, pacing: 'tight',
       durations: ['short'], autoClipCount: true, maxClips: 5, includeCaptions: true, captionPreset: 'pop'
     }
     const request = buildJobRequest(draft, { start: null, end: null })
-    assert.equal(request.transcriptionModel, 'local')
-    // An empty planner is simply not sent, so the engine keeps its default.
+    assert.equal(request.transcriptionModel, undefined)
     assert.equal(request.plannerModel, undefined)
     const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
-    assert.match(html, /This computer \(Nemotron on GPU\)/)
+    assert.match(html, /Optional model overrides/)
   })
 
 

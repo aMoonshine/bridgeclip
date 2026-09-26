@@ -1,4 +1,4 @@
-"""Source ceiling, encoder choice and clip concurrency."""
+"""Source ceiling and clip concurrency settings."""
 
 import pytest
 import yt_dlp
@@ -97,24 +97,7 @@ def test_an_unset_source_ceiling_means_the_default():
     assert Settings(download_resolution="   ").download_resolution == "source"
 
 
-@pytest.mark.parametrize("value", ["cpu", "nvenc", "auto"])
-def test_documented_encoders_are_accepted(value):
-    assert Settings(video_encoder=value).video_encoder == value
-
-
-@pytest.mark.parametrize("value", ["videotoolbox", "qsv", "h264_nvenc; calc"])
-def test_an_unknown_encoder_is_refused(value):
-    with pytest.raises(Exception):
-        Settings(video_encoder=value)
-
-
-def test_an_unset_encoder_means_the_default():
-    assert Settings(video_encoder="").video_encoder == "cpu"
-
-
-def test_the_default_encoder_stays_on_the_processor():
-    """Encoding must not silently move to the GPU for an untouched install."""
-    assert Settings().video_encoder == "cpu"
+def test_render_settings_keep_the_existing_software_path_by_default():
     assert Settings().download_resolution == "source"
     assert Settings().render_concurrency is None
 
@@ -137,23 +120,6 @@ def test_an_absent_clip_count_derives_from_the_machine():
     assert 1 <= derived <= 4
 
 
-def test_nvenc_arguments_are_only_built_when_the_probe_passed():
-    from clip_engine.services.rendering_service import RenderingService
-
-    service = RenderingService.__new__(RenderingService)
-    service.settings = Settings(local_mode=True, video_encoder="cpu")
-
-    service._nvenc_available = False
-    assert service._nvenc_args(1080, 1920, 30.0, ["-g", "60"]) == []
-
-    service._nvenc_available = True
-    args = service._nvenc_args(1080, 1920, 30.0, ["-g", "60"])
-    assert args[args.index("-c:v") + 1] == "h264_nvenc"
-    # Constant quality, not CRF, and the bitrate is derived rather than capped.
-    assert "-cq" in args and "-crf" not in args
-    assert args[args.index("-b:v") + 1] == "0"
-
-
 def test_the_cpu_path_is_untouched_by_the_new_settings():
     """A default install must encode exactly as it did before."""
     from clip_engine.services.rendering_service import RenderingService
@@ -161,8 +127,6 @@ def test_the_cpu_path_is_untouched_by_the_new_settings():
     service = RenderingService.__new__(RenderingService)
     service.settings = Settings(local_mode=True)
     service._local_cpu_encoder = "libx264"
-    service._nvenc_available = True
-
     args = service._video_codec_args(1080, 1920, "30")
     assert args[args.index("-c:v") + 1] == "libx264"
     assert "-crf" in args

@@ -390,14 +390,14 @@ export function startClipJob(
     job_id: jobId,
     video_url: config.videoUrl,
     clipping_mode: config.clippingMode ?? 'quality',
-    ...(config.clippingMode === 'advanced' ? {
+    ...(config.plannerModel ? {
       planner_model: config.plannerModel,
-      transcription_model: config.transcriptionModel,
       planner_max_output_tokens: Math.min(32000, Math.floor(config.plannerCapabilities?.maxOutputTokens ?? 32000)),
       planner_supports_images: config.plannerCapabilities?.supportsImages ?? false,
       planner_input_price: config.plannerCapabilities?.inputPrice ?? null,
       planner_output_price: config.plannerCapabilities?.outputPrice ?? null
     } : {}),
+    ...(config.transcriptionModel ? { transcription_model: config.transcriptionModel } : {}),
     max_clips: config.maxClips,
     auto_clip_count: config.autoClipCount,
     duration_ranges: config.durationRanges,

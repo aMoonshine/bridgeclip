@@ -581,7 +581,7 @@ class TranscriptionService:
         # Keep the recovered model for the rest of this run. Retrying an
         # unavailable model for each chunk causes repeated failures and costs.
         models = list(dict.fromkeys((primary, BUDGET_FALLBACK_MODEL, TRANSCRIPTION_MODEL, BUDGET_TRANSCRIPTION_MODEL)))
-        if getattr(self.settings, "clipping_mode", "quality") == "advanced":
+        if getattr(self.settings, "clipping_mode", "quality") == "advanced" or getattr(self.settings, "transcription_model_override", ""):
             models = [primary]
         chunk_count = max(1, math.ceil(duration / TRANSCRIPTION_CHUNK_SECONDS))
         with tempfile.TemporaryDirectory(prefix="clip-transcribe-", dir=os.path.dirname(audio_path)) as work:

@@ -5,7 +5,7 @@ export interface ClipJobRequest {
   videoUrl: string
   /** Missing on older queued requests; those retain the original quality mode. */
   clippingMode?: 'quality' | 'economy' | 'advanced'
-  /** Required in Advanced mode; presets choose their own models. */
+  /** Optional OpenRouter overrides; both are required in Advanced mode. */
   plannerModel?: string
   transcriptionModel?: string
   maxClips: number | null
