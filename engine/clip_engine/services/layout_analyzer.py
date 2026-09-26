@@ -184,6 +184,9 @@ class ShotLayout:
     focus_path: list[tuple[int, float, float]] = field(default_factory=list)
     # two_shot: the two people, left to right
     people: list[Box] = field(default_factory=list)
+    # two_shot: full person rectangles from the vision result, left to right.
+    # `people` stays as face boxes for face-aware captions and fallback framing.
+    person_boxes: list[Box] = field(default_factory=list)
     # screen_cam
     screen_box: Optional[Box] = None
     # Where the action is inside the screen (active pane, chat, game view).
@@ -201,6 +204,7 @@ class ShotLayout:
             "screen_focus": self.screen_focus.to_list() if self.screen_focus else None,
             "cam_box": self.cam_box.to_list() if self.cam_box else None,
             "people": [p.to_list() for p in self.people],
+            "person_boxes": [p.to_list() for p in self.person_boxes],
         }
 
 
@@ -607,7 +611,7 @@ VISION_SCHEMA: dict[str, Any] = {
         "people": {
             "type": "array",
             "items": {"type": "array", "items": {"type": "integer"}},
-            "description": "Head-and-shoulders box [ymin, xmin, ymax, xmax] 0-1000 for each on-camera person (not inside the webcam overlay).",
+            "description": "Full visible person box [ymin, xmin, ymax, xmax] 0-1000 for each on-camera person, including all visible head, shoulders, and torso; do not guess occluded body parts. Exclude people inside the webcam overlay.",
         },
     },
     "required": ["layout", "cam_box", "screen_box", "screen_focus", "people"],
@@ -626,7 +630,7 @@ Return boxes as [ymin, xmin, ymax, xmax] integers from 0 to 1000 relative to the
 - cam_box: the ENTIRE webcam overlay rectangle (its visible border/edges, including background around the person), not just the face. [] if there is no webcam overlay.
 - screen_box: the region holding the screen/app content, excluding black bars and the webcam overlay if it sits outside the screen. [] if there is no screen content.
 - screen_focus: inside screen_box, the area a viewer should see when the screen is cropped for a phone: the active editor/document pane, chat window, chart, or game view. Leave out sidebars, toolbars and empty space. [] if the whole screen matters equally.
-- people: one head-and-shoulders box per on-camera person, left to right. Exclude people inside the webcam overlay and people shown inside screen content.
+- people: one box around each on-camera person's full visible body, left to right. Include all visible head, shoulders, and torso; do not guess occluded body parts. Exclude people inside the webcam overlay and people shown inside screen content.
 
 Detected faces (normalized x, y, w, h, may be incomplete): {faces}"""
 
@@ -662,7 +666,8 @@ def merge_vision_result(heuristic: ShotLayout, result: dict, src_w: int, src_h: 
 
     cam = _box_from_1000(result.get("cam_box", []))
     screen = _box_from_1000(result.get("screen_box", []))
-    people = [face_from_person_box(b) for b in (_box_from_1000(p) for p in result.get("people", [])) if b]
+    person_boxes = [b for b in (_box_from_1000(p) for p in result.get("people", [])) if b]
+    people = [face_from_person_box(b) for b in person_boxes]
     people.sort(key=lambda b: b.cx)
 
     merged = ShotLayout(0, 0, layout, source="vision")
@@ -683,6 +688,11 @@ def merge_vision_result(heuristic: ShotLayout, result: dict, src_w: int, src_h: 
     elif layout == LayoutType.TWO_SHOT:
         local = heuristic.people if heuristic.layout == LayoutType.TWO_SHOT else []
         merged.people = local if len(local) == 2 else people[:2]
+        if len(person_boxes) >= 2:
+            # Preserve the full detections: converting them to face estimates
+            # is useful for face tracking, but loses the size needed to frame
+            # the whole person in each panel.
+            merged.person_boxes = sorted(person_boxes, key=lambda box: box.cx)[:2]
         if len(merged.people) < 2:
             merged.layout = LayoutType.TALKING_HEAD if merged.people else LayoutType.SCREEN
     elif layout == LayoutType.TALKING_HEAD:

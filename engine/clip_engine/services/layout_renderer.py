@@ -156,6 +156,25 @@ def person_crop(
     return _fit_rect(fx, cy, crop_w, crop_h, bounds)
 
 
+def whole_person_crop(
+    person: Box,
+    src_w: int,
+    src_h: int,
+    panel_w: int,
+    panel_h: int,
+    padding: float = 1.12,
+) -> tuple[int, int, int, int]:
+    """Crop around a full person rectangle so the detected body stays visible."""
+    aspect = panel_w / panel_h
+    person_w = person.w * src_w
+    person_h = person.h * src_h
+    min_h = panel_h / MAX_UPSCALE
+    crop_h = max(person_h * padding, person_w * padding / aspect, min_h)
+    crop_h = min(crop_h, src_h)
+    crop_w = min(crop_h * aspect, src_w)
+    return _fit_rect(person.cx * src_w, person.cy * src_h, crop_w, crop_h, (0, 0, src_w, src_h))
+
+
 def cam_crop(cam: Box, face: Optional[Box], src_w: int, src_h: int, panel_w: int, panel_h: int) -> tuple[int, int, int, int]:
     """Crop inside the webcam overlay, centered on the face.
 
@@ -333,6 +352,15 @@ def shot_chain(
     top_h, bottom_h = stacked_panel_heights(shot, src_h, out_h)
     if shot.layout == LayoutType.TWO_SHOT and len(shot.people) >= 2:
         left, right = shot.people[0], shot.people[1]
+        if len(shot.person_boxes) >= 2:
+            top = whole_person_crop(shot.person_boxes[0], src_w, src_h, out_w, top_h)
+            bottom = whole_person_crop(shot.person_boxes[1], src_w, src_h, out_w, bottom_h)
+            return (
+                f"[t{i}]split=2[pa{i}][pb{i}];"
+                f"[pa{i}]{_crop(top)},scale={out_w}:{top_h}:{scale}[top{i}];"
+                f"[pb{i}]{_crop(bottom)},scale={out_w}:{bottom_h}:{scale}[bot{i}];"
+                f"[top{i}][bot{i}]vstack=inputs=2,setsar=1[v{i}]"
+            )
         mid = (left.cx + right.cx) / 2 * src_w
         return (
             f"[t{i}]split=2[pa{i}][pb{i}];"
@@ -635,6 +663,13 @@ def shot_views(
     top_h, bottom_h = stacked_panel_heights(shot, src_h, out_h)
     if shot.layout == LayoutType.TWO_SHOT and len(shot.people) >= 2:
         left, right = shot.people[0], shot.people[1]
+        if len(shot.person_boxes) >= 2:
+            top = whole_person_crop(shot.person_boxes[0], src_w, src_h, out_w, top_h)
+            bottom = whole_person_crop(shot.person_boxes[1], src_w, src_h, out_w, bottom_h)
+            return [
+                ((top[2], top[3], top[0], top[1]), (0, 0, out_w, top_h)),
+                ((bottom[2], bottom[3], bottom[0], bottom[1]), (0, top_h, out_w, bottom_h)),
+            ]
         mid = (left.cx + right.cx) / 2 * src_w
         top = person_crop(left, src_w, src_h, out_w, top_h, (0, mid))
         bottom = person_crop(right, src_w, src_h, out_w, bottom_h, (mid, src_w))
