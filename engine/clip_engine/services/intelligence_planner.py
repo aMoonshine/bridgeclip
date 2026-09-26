@@ -83,6 +83,7 @@ class PlanningApiCosts:
 # is what we record. This per-token table is only used if that field is
 # missing, so it only needs to be roughly right.
 MODEL_PRICING: dict[str, dict[str, float]] = {
+    "qwen/qwen3.8-flash": {"input": 0.15e-6, "output": 0.47e-6},
     "anthropic/claude-opus-5.5": {"input": 4.00e-6, "output": 20.0e-6},
     "z-ai/glm-5.3-flash": {"input": 0.075e-6, "output": 0.25e-6},
     "google/gemini-3.8-flash": {"input": 0.75e-6, "output": 3.75e-6},

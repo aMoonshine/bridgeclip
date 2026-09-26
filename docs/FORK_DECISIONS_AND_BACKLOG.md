@@ -307,3 +307,14 @@ A cached source below the requested resolution still triggers a new download.
 Verified: 23 source-cache tests pass. Real cached files were reused with YouTube
 metadata requests explicitly forbidden: 2160p at selections 1080/2160, and 720p
 at selection 720. No full transcription/render run was performed for this fix.
+
+
+### Quality model preset (2026-09-26)
+
+Quality defaults to `qwen/qwen3.8-flash` for clip planning and layout vision,
+with low reasoning effort and no automatic model fallback. Economy keeps GLM
+5.3 Flash planning (medium effort) and no layout vision. Enable Quality's AI
+vision toggle with Smart framing and 9:16. Explicit planner selections override
+the preset. Quality transcription remains MAI Transcribe 2. Image input and
+structured output: https://openrouter.ai/qwen/qwen3.8-flash . Actual composition
+quality with this preset remains unverified; replacement alone is not a framing fix.

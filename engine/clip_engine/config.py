@@ -642,26 +642,18 @@ class Settings(BaseSettings):
     # AI MODELS (override via env to swap models without a release)
     # ============================================================
 
-    # Clip planner (OpenRouter slugs). PLANNER_FALLBACK_MODELS is a
-    # comma-separated list OpenRouter tries in order if the primary errors,
-    # is rate limited, or is down. Defaults chosen 2026-09 from the Artificial
-    # Analysis Intelligence Index (v4.3) and a live A/B on a real transcript:
-    # Opus 5.5 @ medium was fastest (~11s) and the most discriminating scorer
-    # at ~$0.07 per 20 min of video. Fallbacks are cross-vendor. Every model in
-    # the chain must accept the configured reasoning effort.
-    planner_model: str = "anthropic/claude-opus-5.5"
-    planner_fallback_models: str = "google/gemini-3.8-flash,openai/gpt-6-sol"
-    # none | minimal | low | medium | high | xhigh
-    planner_reasoning_effort: str = "medium"
-    # Includes reasoning tokens; 100 clips of JSON is ~15k on its own.
+    # Quality preset: use the same affordable image-capable model for planning
+    # and layout checks. No automatic fallback to a more expensive model.
+    planner_model: str = "qwen/qwen3.8-flash"
+    planner_fallback_models: str = ""
+    # Keep reasoning modest so output capacity remains available for the plan.
+    planner_reasoning_effort: str = "low"
     planner_max_output_tokens: int = 32000
 
-    # Layout vision: classifies each shot's framing and locates webcam/screen
-    # overlays from one keyframe per distinct setup. Gemini 3.8 Flash has the
-    # best native box localization per dollar (AA MMMU-Pro 0.856, ~$0.001/frame).
+    # Layout vision checks one keyframe per distinct visual setup.
     layout_vision_enabled: bool = True
-    layout_vision_model: str = "google/gemini-3.8-flash"
-    layout_vision_fallback_models: str = "anthropic/claude-opus-5.5"
+    layout_vision_model: str = "qwen/qwen3.8-flash"
+    layout_vision_fallback_models: str = ""
     layout_vision_reasoning_effort: str = "low"
 
     # Selected by the desktop bridge per process before settings are loaded.

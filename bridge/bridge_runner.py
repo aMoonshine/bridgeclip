@@ -192,6 +192,7 @@ async def run(config: dict) -> bool:
         # Each job has its own bridge process, so model choices cannot leak to
         # another queued or concurrent run. Do not fall back to higher-cost planners.
         os.environ["PLANNER_MODEL"] = "z-ai/glm-5.3-flash"
+        os.environ["PLANNER_REASONING_EFFORT"] = "medium"
         os.environ["PLANNER_FALLBACK_MODELS"] = ""
         os.environ["LAYOUT_VISION_ENABLED"] = "false"
 
