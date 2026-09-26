@@ -39,6 +39,8 @@ def safe_processing_error(error: Exception) -> str:
         return "Processing timed out"
     if type(error).__name__ == "VisualPlanningUnsupportedError":
         return "Selected planner requires a video with speech"
+    if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "status_code", None) == 429:
+        return "Planning provider rate limit reached"
     if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "status_code", None) == 404:
         return "Planning model unavailable"
     if type(error).__name__ == "VideoDownloadError":
@@ -80,6 +82,8 @@ def safe_failure_code(error: Exception) -> str:
         return "storage.full"
     if type(error).__name__ == "VisualPlanningUnsupportedError":
         return "planning.images_unsupported"
+    if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "status_code", None) == 429:
+        return "planning.rate_limit"
     if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "status_code", None) == 404:
         return "planning.model_unavailable"
     if type(error).__name__ in {"TranscriptionError", "TranscriptionProviderError"}:
@@ -110,6 +114,7 @@ def safe_job_error_text(error: str | None) -> str | None:
     if error in {
         "Processing timed out", "Video download failed", "No clip-worthy moments found",
         "Selected planner requires a video with speech", "Planning model unavailable",
+        "Planning provider rate limit reached",
         "Processing failed", "Job cancelled", "Transcription authentication failed",
         "Transcription quota or rate limit reached", "Transcription service unavailable",
         "Transcription providers are temporarily rate limited",

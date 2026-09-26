@@ -338,3 +338,13 @@ class TestPlanClips:
         ])
         assert result.api_costs.attempts == 2
         assert result.api_costs.estimated_cost_usd == 0.03
+
+
+def test_planning_rate_limit_survives_error_sanitization():
+    from clip_engine.error_policy import safe_failure_code, safe_processing_error, safe_job_error_text
+    from clip_engine.services.intelligence_planner import IntelligencePlanningError
+    error = IntelligencePlanningError("provider private details", retryable=True, status_code=429)
+    assert safe_failure_code(error) == "planning.rate_limit"
+    message = safe_processing_error(error)
+    assert message == "Planning provider rate limit reached"
+    assert safe_job_error_text(message) == message

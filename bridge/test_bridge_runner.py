@@ -163,10 +163,9 @@ class BridgeTests(unittest.TestCase):
                              {"planner_input_price": float("nan")}]:
             with self.subTest(patch=patch_values), self.assertRaises(ValueError):
                 bridge.validate_config({**config, **patch_values})
-        # None now means "not specified" and falls back to the default, the same
-        # as omitting the field. The form blocks submitting without a choice.
-        self.assertEqual(bridge.validate_config({**config, "transcription_model": None}),
-                         {**config, "transcription_model": None})
+        # Advanced mode requires both explicit model choices.
+        with self.assertRaises(ValueError):
+            bridge.validate_config({**config, "transcription_model": None})
 
     def test_a_model_may_be_chosen_in_any_mode(self):
         """The presets set defaults, they do not forbid a choice.
@@ -280,6 +279,16 @@ class BridgeTests(unittest.TestCase):
         done = subprocess.run([sys.executable, "-c", script], cwd=os.path.dirname(os.path.abspath(bridge.__file__)), capture_output=True, text=True, timeout=30)
         self.assertEqual(done.stdout, json.dumps({"type": "error", "message": "x"}) + "\n")
         self.assertIn("child noise", done.stderr)
+
+
+
+
+class PlanningRateLimitMessageTest(unittest.TestCase):
+    def test_planning_rate_limit_hint(self):
+        result = bridge.describe_failure("Planning provider rate limit reached")
+        self.assertIn("429", result["message"])
+        self.assertIn("planning model", result["hint"])
+        self.assertNotIn("System check", result["hint"])
 
 
 if __name__ == '__main__':
