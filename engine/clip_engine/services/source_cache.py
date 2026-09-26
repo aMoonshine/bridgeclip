@@ -6,9 +6,9 @@ full download again, which for a long 4K source is minutes and gigabytes.
 
 This keeps a copy outside the work directory, keyed by a stable video identity.
 A stored source is only reused when it is the same video, is at least as tall as
-the configured ceiling, and still has the duration the host reports. Anything
-unproven is re-downloaded rather than trusted, because using the wrong source
-would silently produce clips from the wrong video.
+the requested download resolution, and its file size matches the stored record.
+The downloader probes cached media locally before reuse, without contacting the
+host. An optional host-duration check is available when metadata is already known.
 """
 
 import hashlib

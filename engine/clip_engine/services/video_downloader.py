@@ -410,47 +410,41 @@ class VideoDownloaderService:
         - Picks the highest-resolution non-AV1 stream (up to 2160p)
         """
         deadline = time.monotonic() + DOWNLOAD_DEADLINE_SECONDS
-        # First, get video metadata to check duration.
+        max_duration = min(max_duration_seconds or self.settings.max_download_duration_seconds, self.settings.max_download_duration_seconds)
+        ceiling = self._max_source_height()
+        key = cache_key(url, source_type) if source_type in ("youtube", "twitch") else ""
+        if key:
+            # A download ceiling must not force an existing higher-quality source
+            # to be downloaded again. Resolve the cache before any host request.
+            cached = self.source_cache.lookup(key, min_height=ceiling)
+            if cached is not None:
+                cached_path, entry = cached
+                self._check_source_size(entry.bytes)
+                metadata = await self._get_video_metadata_ffprobe(cached_path)
+                if metadata.duration_seconds > max_duration:
+                    raise VideoDownloadError(
+                        f"Video duration ({metadata.duration_seconds}s) exceeds maximum "
+                        f"allowed duration ({max_duration}s)"
+                    )
+                metadata.title = entry.title or entry.url
+                metadata.source_type = source_type
+                metadata.extractor = source_type
+                logger.info("Reusing cached source %s (%dp)", key, entry.height)
+                return DownloadResult(
+                    video_path=cached_path,
+                    metadata=metadata,
+                    file_size_bytes=entry.bytes,
+                    source_type=source_type,
+                )
+
         metadata = await asyncio.wait_for(
             self._get_video_info(url, deadline=deadline), timeout=DOWNLOAD_DEADLINE_SECONDS
         )
-
-        max_duration = min(max_duration_seconds or self.settings.max_download_duration_seconds, self.settings.max_download_duration_seconds)
         if metadata.duration_seconds > max_duration:
             raise VideoDownloadError(
                 f"Video duration ({metadata.duration_seconds}s) exceeds maximum "
                 f"allowed duration ({max_duration}s)"
             )
-
-        ceiling = self._max_source_height()
-        key = cache_key(url, source_type) if source_type in ("youtube", "twitch") else ""
-        if key:
-            cached = self.source_cache.lookup(
-                key,
-                expected_duration=metadata.duration_seconds,
-                min_height=ceiling,
-                max_height=ceiling,
-            )
-            if cached is not None:
-                cached_path, entry = cached
-                logger.info("Reusing cached source %s (%dp)", key, entry.height)
-                return DownloadResult(
-                    video_path=cached_path,
-                    metadata=VideoMetadata(
-                        title=metadata.title or entry.url,
-                        duration_seconds=metadata.duration_seconds or entry.duration_seconds,
-                        width=entry.width or metadata.width,
-                        height=entry.height or metadata.height,
-                        fps=metadata.fps,
-                        format_id=metadata.format_id,
-                        extractor=metadata.extractor,
-                        uploader=metadata.uploader,
-                        upload_date=metadata.upload_date,
-                        source_type=source_type,
-                    ),
-                    file_size_bytes=entry.bytes,
-                    source_type=source_type,
-                )
 
         logger.info("Downloading video from %s", source_type)
         def check_progress(progress: dict) -> None:

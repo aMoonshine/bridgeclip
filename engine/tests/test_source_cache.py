@@ -105,26 +105,30 @@ def test_a_cached_4k_source_does_not_satisfy_a_full_hd_ceiling(tmp_path):
                         min_height=1080, max_height=1080) is None
 
 
-def test_downloader_skips_a_4k_cache_entry_when_full_hd_is_selected(tmp_path):
+@pytest.mark.parametrize("resolution", ["1080", "2160"])
+def test_downloader_reuses_4k_without_contacting_youtube(tmp_path, resolution):
     cache = SourceCache(str(tmp_path))
     cache.store(cache_key(YOUTUBE, "youtube"), YOUTUBE, "youtube",
-                _media(tmp_path), 3840, 2160, 10.0)
+                _media(tmp_path), 3840, 2160, 10.0, title="Saved title")
     downloader = VideoDownloaderService.__new__(VideoDownloaderService)
-    downloader.settings = SimpleNamespace(download_resolution="1080", max_download_duration_seconds=60)
+    downloader.settings = SimpleNamespace(download_resolution=resolution, max_download_duration_seconds=60)
     downloader.source_cache = cache
-    metadata = VideoMetadata("Video", 10.0, 3840, 2160, 30.0, "4k", "youtube")
-    downloader._get_video_info = lambda *args, **kwargs: asyncio.sleep(0, result=metadata)
 
-    class DownloadStarted(Exception):
-        pass
+    async def network_forbidden(*args, **kwargs):
+        raise AssertionError("Cached video must not contact YouTube")
 
-    def mark_download_started(_source_type):
-        raise DownloadStarted
+    async def probe(path):
+        assert os.path.isfile(path)
+        return VideoMetadata("local", 10.0, 3840, 2160, 25.0, "mp4", "local")
 
-    downloader._download_format_selectors = mark_download_started
-    with pytest.raises(DownloadStarted):
-        asyncio.run(downloader._download_from_youtube(
-            YOUTUBE, str(tmp_path / "new.mp4"), str(tmp_path)))
+    downloader._get_video_info = network_forbidden
+    downloader._get_video_metadata_ffprobe = probe
+    result = asyncio.run(downloader._download_from_youtube(
+        YOUTUBE, str(tmp_path / "new.mp4"), str(tmp_path)))
+    assert result.video_path == cache.lookup(cache_key(YOUTUBE, "youtube"))[0]
+    assert result.metadata.title == "Saved title"
+    assert result.metadata.fps == 25.0
+    assert result.source_type == "youtube"
 
 
 def test_a_source_of_a_different_length_is_not_reused(tmp_path):
