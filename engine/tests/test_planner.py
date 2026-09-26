@@ -348,3 +348,13 @@ def test_planning_rate_limit_survives_error_sanitization():
     message = safe_processing_error(error)
     assert message == "Planning provider rate limit reached"
     assert safe_job_error_text(message) == message
+
+
+def test_planning_output_budget_has_actionable_safe_error():
+    from clip_engine.error_policy import safe_failure_code, safe_processing_error, safe_job_error_text
+    from clip_engine.services.intelligence_planner import IntelligencePlanningError
+    error = IntelligencePlanningError("private provider details", reason="output_budget")
+    assert safe_failure_code(error) == "planning.output_budget"
+    message = safe_processing_error(error)
+    assert message == "Planning model exhausted its output budget"
+    assert safe_job_error_text(message) == message

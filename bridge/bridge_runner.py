@@ -36,6 +36,9 @@ DURATION_RANGE_IDS = ("xshort", "short", "medium", "long", "xlong", "extended", 
 # request URLs, proxy credentials and local paths, so only these fixed strings
 # reach the UI. First match wins.
 FAILURES = (
+    (("planning model exhausted its output budget",),
+     "The planning model used its output limit without returning a clip plan.",
+     "Choose another planning model. Saved transcripts are reused automatically when the source and transcription options match."),
     (("planning provider rate limit reached",),
      "The planning model was rate limited by OpenRouter or its provider (HTTP 429).",
      "Wait a few minutes before retrying, or select another planning model. Check OpenRouter limits if this persists."),

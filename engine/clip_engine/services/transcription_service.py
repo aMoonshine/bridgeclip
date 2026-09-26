@@ -471,6 +471,18 @@ class TranscriptionService:
         if not os.path.isfile(video_path):
             raise TranscriptionError("Video file not found", reason="source_missing")
 
+        from .transcript_cache import TranscriptCache
+        cache = TranscriptCache(
+            getattr(getattr(self, "settings", None), "source_cache_dir", None), video_path,
+            language=language, translate=translate_to_english, keyterms=normalize_keyterms(keyterms),
+            start=start_seconds, end=end_seconds,
+        )
+        cached = cache.load()
+        if cached is not None:
+            logger.info("Reusing cached transcript: %d segments", len(cached.segments))
+            self._progress("Using saved transcript; skipping audio transcription...")
+            return cached
+
         window_start = 0.0
         if start_seconds is not None and start_seconds > 0:
             window_start = max(0.0, start_seconds - TRANSCRIPTION_RANGE_PAD_SECONDS)
@@ -481,13 +493,15 @@ class TranscriptionService:
         await self._extract_audio_from_video(video_path, audio_path, window_start, window_end)
 
         try:
-            return await self.transcribe_audio(
+            result = await self.transcribe_audio(
                 audio_path=audio_path,
                 language=language,
                 translate_to_english=translate_to_english,
                 keyterms=keyterms,
                 timeline_offset_seconds=window_start,
             )
+            cache.store(result)
+            return result
         finally:
             # Cleanup extracted audio
             if os.path.exists(audio_path):

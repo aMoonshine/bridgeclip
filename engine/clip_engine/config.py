@@ -642,17 +642,17 @@ class Settings(BaseSettings):
     # AI MODELS (override via env to swap models without a release)
     # ============================================================
 
-    # Quality preset: use the same affordable image-capable model for planning
-    # and layout checks. No automatic fallback to a more expensive model.
-    planner_model: str = "qwen/qwen3.8-flash"
+    # Quality uses GLM planning and a separate image-capable vision checker.
+    # No automatic fallback to a more expensive model.
+    planner_model: str = "z-ai/glm-5.3-flash"
     planner_fallback_models: str = ""
     # Keep reasoning modest so output capacity remains available for the plan.
-    planner_reasoning_effort: str = "low"
+    planner_reasoning_effort: str = "medium"
     planner_max_output_tokens: int = 32000
 
     # Layout vision checks one keyframe per distinct visual setup.
     layout_vision_enabled: bool = True
-    layout_vision_model: str = "qwen/qwen3.8-flash"
+    layout_vision_model: str = "google/gemini-3.8-flash"
     layout_vision_fallback_models: str = ""
     layout_vision_reasoning_effort: str = "low"
 

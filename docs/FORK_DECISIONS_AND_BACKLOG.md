@@ -318,3 +318,33 @@ vision toggle with Smart framing and 9:16. Explicit planner selections override
 the preset. Quality transcription remains MAI Transcribe 2. Image input and
 structured output: https://openrouter.ai/qwen/qwen3.8-flash . Actual composition
 quality with this preset remains unverified; replacement alone is not a framing fix.
+
+
+### Transcript reuse and revised Quality preset (2026-09-26)
+
+Supersedes the Qwen Quality preset above. Real run `efdc118c-1857-448a-820d-ef9458afe9b5`
+spent all 32,000 completion tokens on reasoning at low effort, returned no plan,
+and cost $0.01842925 for planning. Quality now uses GLM 5.3 Flash (medium) for
+planning and Gemini 3.8 Flash (low) for the separate image layout checks, without
+model fallbacks. Explicit planner selections still override the default. Economy
+continues to disable layout vision. A spent output budget now has failure code
+`planning.output_budget` and a specific UI explanation.
+
+Completed, word-timed transcripts are saved atomically in `<source-folder>/transcripts/`
+immediately after transcription, before planning. Reuse skips audio extraction and
+provider calls and adds no transcription API cost to the new run. Cache identity
+includes source path, size and modification time, language, translation, vocabulary
+and selected time range. Mode/planner/transcription-model changes alone reuse the
+saved transcript intentionally. Changing the source or those transcription options
+creates a new entry. Partial transcripts cannot satisfy a full-source request.
+Corrupt/missing cache entries fall back to transcription; write failures do not
+fail an otherwise successful run. Deleting the transcripts subfolder forces fresh
+transcription. Source-cache video deletion does not currently remove transcript
+entries; clearing the whole source folder removes both.
+
+Recovered the 657-segment transcript from the failed run into `Y:/cache/bridge/transcripts`
+for the full cached `wiwCiRabml0` source with default language and empty vocabulary.
+Original model provenance was unavailable in the artifact and is labelled unknown.
+Verified its reuse via the real transcription entry point with audio extraction and
+provider calls forbidden. 106 scoped tests plus 39 subtests and TypeScript checks
+passed. No new paid provider call or full render was made for this change.

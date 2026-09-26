@@ -1032,7 +1032,7 @@ Do not overlap clips by more than 5 seconds."""
                         f"{served_by} used the whole output budget "
                         f"({self.settings.planner_max_output_tokens} tokens) without returning a plan. "
                         "This model spends its budget on reasoning; choose a non-reasoning planner, "
-                        "or one that answers within the limit."
+                        "or one that answers within the limit.", reason="output_budget"
                     )
                 raise IntelligencePlanningError(
                     f"Planner returned no content (finish_reason={finish_reason})"
@@ -1492,10 +1492,11 @@ class IntelligencePlanningError(Exception):
     """Exception raised when intelligence planning fails."""
 
     def __init__(self, message: str, retryable: bool = False,
-                 status_code: Optional[int] = None):
+                 status_code: Optional[int] = None, reason: Optional[str] = None):
         super().__init__(message)
         self.retryable = retryable
         self.status_code = status_code
+        self.reason = reason
 
 
 class VisualPlanningUnsupportedError(IntelligencePlanningError):
