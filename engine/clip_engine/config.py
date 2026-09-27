@@ -652,9 +652,9 @@ class Settings(BaseSettings):
 
     # Layout vision checks one keyframe per distinct visual setup.
     layout_vision_enabled: bool = True
-    layout_vision_model: str = "google/gemini-3.8-flash"
+    layout_vision_model: str = "qwen/qwen3.8-flash"
     layout_vision_fallback_models: str = ""
-    layout_vision_reasoning_effort: str = "low"
+    layout_vision_reasoning_effort: str = "none"
 
     # Selected by the desktop bridge per process before settings are loaded.
     clipping_mode: Literal["quality", "economy", "advanced"] = "quality"

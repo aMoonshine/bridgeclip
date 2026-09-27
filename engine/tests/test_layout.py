@@ -536,3 +536,32 @@ class TestDetector:
         thread.start()
         thread.join()
         assert other and other[0] is not own
+
+
+def test_qwen_vision_explicitly_disables_reasoning(monkeypatch):
+    import asyncio
+    import json
+    import cv2
+    import numpy as np
+    from unittest.mock import AsyncMock
+    from clip_engine.config import Settings
+    from clip_engine.services import layout_analyzer as module
+
+    analyzer = LayoutAnalyzer.__new__(LayoutAnalyzer)
+    analyzer.settings = Settings(_env_file=None)
+    assert analyzer.settings.layout_vision_model == "qwen/qwen3.8-flash"
+    assert analyzer.settings.layout_vision_reasoning_effort == "none"
+    analyzer._vision_cache = []
+    analyzer._get_client = AsyncMock(return_value=object())
+    async def capture(client, payload):
+        assert payload["model"] == "qwen/qwen3.8-flash"
+        assert payload["reasoning"] == {"enabled": False}
+        assert payload["max_tokens"] == 4000
+        assert "models" not in payload
+        assert payload["messages"][0]["content"][1]["type"] == "image_url"
+        return {"choices": [{"message": {"content": json.dumps({"layout": "talking_head"})}}]}, {}
+    monkeypatch.setattr(module, "chat_completion", capture)
+    _, image = cv2.imencode(".jpg", np.zeros((90, 160, 3), dtype=np.uint8))
+    result, _ = asyncio.run(analyzer._vision_classify(
+        image.tobytes(), [], ShotLayout(0, 1000, LayoutType.TALKING_HEAD)))
+    assert result["layout"] == "talking_head"

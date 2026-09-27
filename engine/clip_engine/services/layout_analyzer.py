@@ -997,7 +997,12 @@ class LayoutAnalyzer:
         fallbacks = self.settings.get_layout_vision_fallback_models()
         if fallbacks:
             payload["models"] = fallbacks
-        apply_reasoning(payload, self.settings.layout_vision_reasoning_effort, temperature=0.0)
+        if self.settings.layout_vision_reasoning_effort == "none":
+            # Omitting reasoning or excluding its text leaves Qwen thinking by default.
+            payload["reasoning"] = {"enabled": False}
+            payload["temperature"] = 0.0
+        else:
+            apply_reasoning(payload, self.settings.layout_vision_reasoning_effort, temperature=0.0)
 
         client = await self._get_client()
         for attempt in range(2):

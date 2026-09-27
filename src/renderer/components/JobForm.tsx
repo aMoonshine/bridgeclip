@@ -394,7 +394,7 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
       <Group label="Clipping mode">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Clipping mode">
           {([
-            { id: 'quality', label: 'Quality', hint: 'GLM 5.3 Flash + Gemini vision · MAI Transcribe 2' },
+            { id: 'quality', label: 'Quality', hint: 'GLM 5.3 Flash + Qwen vision · MAI Transcribe 2' },
             { id: 'economy', label: 'Economy', hint: 'GLM 5.3 Flash planning · Whisper Turbo' },
             { id: 'advanced', label: 'Advanced', hint: 'Choose your OpenRouter models' }
           ] as const).map((mode) => {

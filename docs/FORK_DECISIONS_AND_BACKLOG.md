@@ -348,3 +348,14 @@ Original model provenance was unavailable in the artifact and is labelled unknow
 Verified its reuse via the real transcription entry point with audio extraction and
 provider calls forbidden. 106 scoped tests plus 39 subtests and TypeScript checks
 passed. No new paid provider call or full render was made for this change.
+
+
+### Vision preset correction (2026-09-27)
+
+Quality uses GLM 5.3 Flash for planning and Qwen3.8 Flash for image layout checks.
+The Gemini substitution was not the requested solution and has been reverted.
+OpenRouter's live model catalog reports Qwen reasoning as optional and enabled
+by default. Vision now explicitly sends `reasoning: {enabled: false}` with the
+existing 4,000-token output limit; `low` and `exclude` do not disable reasoning.
+No model fallbacks. Request construction is tested offline; actual provider
+compliance and composition quality still require a real visual run.
