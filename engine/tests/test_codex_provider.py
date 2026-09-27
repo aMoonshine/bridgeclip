@@ -156,3 +156,37 @@ def test_vision_queue_overlaps_two_requests_and_remains_bounded(monkeypatch):
    for task in tasks: task.cancel()
    await asyncio.gather(*tasks,return_exceptions=True)
  asyncio.run(run())
+
+
+def test_login_reuses_saved_account_without_browser(monkeypatch, capsys):
+ class Session:
+  async def __aenter__(self): return self
+  async def __aexit__(self,*args): pass
+  async def account(self): return True
+  async def models(self): return []
+  async def request(self,*args): raise AssertionError('Existing login must not start browser login again')
+ monkeypatch.setattr(module,'CodexSession',Session)
+ monkeypatch.setattr(sys,'argv',['codex_provider','--login'])
+ asyncio.run(module.main())
+ assert json.loads(capsys.readouterr().out)['connected'] is True
+
+
+def test_logged_out_account_still_can_sign_in(monkeypatch, capsys):
+ class Session:
+  def __init__(self):
+   self.connected=False
+   self.events=asyncio.Queue()
+  async def __aenter__(self): return self
+  async def __aexit__(self,*args): pass
+  async def account(self): return self.connected
+  async def models(self): return []
+  async def request(self,method,params):
+   assert method=='account/login/start' and params=={'type':'chatgpt'}
+   self.connected=True
+   await self.events.put({'method':'account/login/completed','params':{'success':True}})
+   return {'authUrl':'https://auth.openai.com/test-login'}
+ monkeypatch.setattr(module,'CodexSession',Session)
+ monkeypatch.setattr(sys,'argv',['codex_provider','--login'])
+ asyncio.run(module.main())
+ lines=[json.loads(line) for line in capsys.readouterr().out.splitlines()]
+ assert 'authUrl' in lines[0] and lines[1]['connected'] is True

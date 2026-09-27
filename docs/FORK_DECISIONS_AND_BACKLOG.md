@@ -1,5 +1,47 @@
 # Fork decisions, changes and backlog
 
+
+## Current parallel applications (2026-09-27)
+
+This section supersedes older "current branch" labels below; those describe
+historical integration steps. The user accepted the dynamic framing result and
+asked to continue developing the Codex edition alongside the standard edition.
+
+| Edition | Checkout | Working branch |
+|---|---|---|
+| Standard / OpenRouter | `Y:\ProjectsAI\bridgeclip` | `codex/dynamic-framing` |
+| Codex subscription | `Y:\ProjectsAI\bridgeclip-codex` | `codex/codex-provider` |
+
+Accepted Codex framing snapshot: `8ff370c`, tag `codex-framing-2026-09-27`.
+Codex-specific launch, credentials, caches, controls and verification evidence:
+[CODEX_APP.md](CODEX_APP.md). D3's old no-OAuth decision applies to the standard
+OpenRouter app; the separately requested Codex edition explicitly uses official
+ChatGPT sign-in through Codex App Server.
+
+### Adopting future author releases
+
+1. Keep `upstream` pointing at `bridge-mind/bridgeclip` and `origin` at the user's
+   `aMoonshine/bridgeclip`. Fetch author releases; record the exact upstream SHA.
+2. Save uncommitted work and tag the accepted overlay before integration. `main`
+   is the intended clean upstream baseline; do not force-replace the historical
+   remote main described below as a side effect of an app update.
+3. Create a `codex/overlay-<version>` candidate from the accepted edition and
+   rebase its fork commits onto the new author SHA. Preserve previous branches
+   and tags. Use an isolated checkout when the working app is running; no junctions.
+4. Review conflicts and upstream replacements before carrying local fixes.
+   Required checks: source/transcript cache reuse, settings and output libraries,
+   ChatGPT reconnect without browser, model/reasoning routing, changing camera
+   plans with one/two people, timestamps/audio/captions and app launch.
+5. Publish the tested candidate to the user's fork, then make it the working
+   version and record its branch/base/snapshot here. Keep the old edition usable
+   for rollback. Avoid force-pushing existing published branches by publishing
+   each rebased integration candidate under its new name. No upstream PRs.
+
+The actual update/rebase is performed when requested; this is the maintenance
+procedure, not a scheduled background updater. Shared Python/FFmpeg runtimes
+must remain installed while either development app uses them.
+
+
 Authoritative handover document for the work carried out on top of `bridge-mind/bridgeclip`.
 Written 2026-09-26 at a deliberate pause in development. Everything below is a record of
 what was decided, what was built, what was fixed, and what is still broken.

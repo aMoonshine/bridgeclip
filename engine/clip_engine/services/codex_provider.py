@@ -244,7 +244,8 @@ async def main():
     import sys
     try:
         async with CodexSession() as session:
-            if "--login" in sys.argv:
+            connected = await session.account()
+            if "--login" in sys.argv and not connected:
                 result = await session.request("account/login/start", {"type": "chatgpt"})
                 print(json.dumps({"authUrl": result["authUrl"]}), flush=True)
                 async with asyncio.timeout(180):
@@ -256,7 +257,7 @@ async def main():
                             if not event["params"].get("success"):
                                 raise CodexError("Codex sign-in did not complete.")
                             break
-            connected = await session.account()
+                connected = await session.account()
             models = await session.models() if connected else []
             print(json.dumps({"connected": connected, "models": [{"id": m.get("model", m["id"]), "name": m["displayName"], "vision": "image" in m.get("inputModalities", ["text", "image"]), "reasoningEfforts": [e["reasoningEffort"] for e in m.get("supportedReasoningEfforts", [])], "defaultReasoningEffort": m.get("defaultReasoningEffort", "low")} for m in models]}), flush=True)
     except Exception as exc:

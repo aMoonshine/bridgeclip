@@ -155,3 +155,27 @@ Raw single-image comparison responses and token counts:
 Validation for this update: 76 layout/transport Python tests; 52 settings, form
 and security tests; Electron model/reasoning and Advanced-mode flows; Electron
 media access across output-folder change. TypeScript checks and build passed.
+
+
+## Login persistence and ongoing development
+
+The user accepted the improved dynamic framing on 2026-09-27. Commit `8ff370c`
+is the tested framing baseline, preserved as `codex-framing-2026-09-27`.
+The independent checkout remains `Y:\ProjectsAI\bridgeclip-codex`, on
+`codex/codex-provider`; the launcher and separate profile remain the entry points.
+
+The reported repeated login was reproduced as an interface/control-flow bug:
+Settings did not check saved login on mount, and the login action always started
+OAuth even for an authenticated account. Three fresh real App Server processes
+all recognized the same saved session without a browser. Settings now checks
+on mount, only offers sign-in after a confirmed logged-out result, and keeps
+connection errors distinct from being logged out. The login action first reads
+the saved account and returns it immediately when already authenticated.
+Credentials remain in the dedicated app profile, outside the repository. No
+application can promise an indefinite session after server revocation/expiry;
+this fix removes the unnecessary login on ordinary reopen.
+
+Upstream updates use the process in FORK_DECISIONS_AND_BACKLOG.md section 2:
+snapshot the accepted overlay, fetch upstream, rebase on a candidate branch,
+resolve conflicts, test the app-specific seams, then adopt the tested candidate.
+Do not rewrite the working checkout while a clip job is using its engine files.

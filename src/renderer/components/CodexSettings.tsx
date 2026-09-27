@@ -8,15 +8,15 @@ import type { CodexStatus } from '../../shared/codex'
 export function CodexSettings({ compact = false }: { compact?: boolean }): React.JSX.Element {
   const { codexModel, codexReasoning, saving, save } = useSettingsStore()
   const [status, setStatus] = useState<CodexStatus | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState('')
   async function check(login: boolean): Promise<void> {
     setBusy(true); setError('')
     try { setStatus(await (login ? getApi().codex.login() : getApi().codex.status())) }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not connect to Codex.') }
+    catch (e) { setStatus(null); setError(e instanceof Error ? e.message : 'Could not connect to Codex.') }
     finally { setBusy(false) }
   }
-  useEffect(() => { if (compact) void check(false) }, [])
+  useEffect(() => { void check(false) }, [])
   const selected = status?.models.find(m => m.id === codexModel)
   const efforts = selected?.reasoningEfforts ?? []
   const Wrapper = compact ? 'div' : Panel
@@ -24,7 +24,7 @@ export function CodexSettings({ compact = false }: { compact?: boolean }): React
     {!compact && <h2 className="text-sm font-semibold text-ink">Codex connection</h2>}
     <p className="mt-2 text-xs text-ink-muted">Quality: planning, local face tracking and image checks for uncertain shots. Economy: planning and local framing. Uses your ChatGPT subscription limits. Whisper transcription still uses OpenRouter.</p>
     <div className="mt-3 flex gap-2">
-      <Button disabled={busy} onClick={() => void check(true)}>Sign in with ChatGPT</Button>
+      {status?.connected === false && <Button disabled={busy} onClick={() => void check(true)}>Sign in with ChatGPT</Button>}
       <Button disabled={busy} onClick={() => void check(false)}>{busy ? 'Connecting...' : 'Check connection'}</Button>
     </div>
     {status && <p className="mt-2 text-xs" role="status">{status.connected ? 'Connected with ChatGPT' : 'Not signed in. Use Sign in with ChatGPT.'}</p>}
