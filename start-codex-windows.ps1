@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $project = $PSScriptRoot
 if (-not $RuntimeRoot) {
     if (Test-Path -LiteralPath (Join-Path $project 'engine\.venv\Scripts\python.exe')) { $RuntimeRoot = $project }
-    else { $RuntimeRoot = 'Y:\ProjectsAI\bridgeclip' }
+    else { $RuntimeRoot = Join-Path (Split-Path $project -Parent) 'bridgeclip' }
 }
 $RuntimeRoot = (Resolve-Path -LiteralPath $RuntimeRoot).Path
 $nodeDir = Join-Path $RuntimeRoot 'engine-bin\node\node-v22.23.3-win-x64'

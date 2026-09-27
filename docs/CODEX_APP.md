@@ -2,7 +2,7 @@
 
 ## Start on this machine
 
-Checkout: `Y:\AI\Codex\bridgeclip-codex\bridgeclip`
+Checkout: `Y:\ProjectsAI\bridgeclip-codex`
 Branch: `codex/codex-provider`, based on dynamic framing commit `b339988`.
 Run `start-codex-windows.cmd`. It builds the UI and opens a separate Electron app.
 
@@ -76,3 +76,10 @@ Official protocol references checked during implementation:
 https://learn.chatgpt.com/docs/app-server
 https://learn.chatgpt.com/docs/auth
 The installed CLI JSON schema was also used to validate parameter names.
+
+## Location correction
+
+The Codex edition is now a standalone clone under `Y:\ProjectsAI\bridgeclip-codex`,
+with its own `.git` directory and physically copied Node dependencies. It is not
+a managed Codex worktree. The application launches without the Codex desktop UI;
+its model requests still use the installed Codex executable and ChatGPT login.
