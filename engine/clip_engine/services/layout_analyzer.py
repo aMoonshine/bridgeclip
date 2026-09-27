@@ -3,7 +3,7 @@ Layout Analyzer - decides how each shot of a clip should be framed for 9:16.
 
 For a clip it:
 1. Decodes low-res frames (ANALYSIS_FPS) with FFmpeg.
-2. Detects faces per frame (OpenCV YuNet) and shot cuts (HSV histogram jumps).
+2. Detects faces per frame (OpenCV YuNet) and cuts (color and spatial changes).
 3. Tracks faces within each shot and classifies the shot's layout:
      talking_head  one on-camera person          -> face-tracked full-frame crop
      two_shot      two people side by side       -> stacked split, one per panel
@@ -21,6 +21,7 @@ heuristic classification is used.
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import math
@@ -167,6 +168,7 @@ class FrameInfo:
     t_ms: int
     faces: list[Box]
     hist: Any  # np.ndarray
+    appearance: Any = None  # small spatial BGR thumbnail, normalized to 0..1
 
 
 @dataclass
@@ -238,13 +240,18 @@ class ClipLayoutPlan:
 
 
 def segment_shots(frames: list[FrameInfo], duration_ms: int) -> list[tuple[int, int]]:
-    """Split the timeline into shots at histogram cuts; merge shots < MIN_SHOT_MS."""
+    """Split on color or spatial changes; merge shots < MIN_SHOT_MS."""
     if not frames:
         return [(0, duration_ms)]
     cuts = [0]
     for prev, cur in zip(frames, frames[1:]):
         dist = cv2.compareHist(prev.hist, cur.hist, cv2.HISTCMP_BHATTACHARYYA)
-        if dist > SHOT_CUT_THRESHOLD:
+        spatial = 0.0
+        if prev.appearance is not None and cur.appearance is not None:
+            spatial = float(np.mean(np.abs(cur.appearance - prev.appearance)))
+        # Studio camera angles often share the same color histogram. Spatial
+        # change catches those cuts; the color gate rejects small subject motion.
+        if dist > SHOT_CUT_THRESHOLD or spatial > 0.22 or (spatial > 0.12 and dist > 0.10):
             # The cut happened somewhere between the two samples.
             cuts.append((prev.t_ms + cur.t_ms) // 2)
     cuts.append(duration_ms)
@@ -485,7 +492,8 @@ def classify_shot(
         a, b = on_camera[0].median_box(), on_camera[1].median_box()
         similar = min(a.h, b.h) / max(a.h, b.h) >= 0.5
         separated = abs(a.cx - b.cx) >= 0.22
-        if len(on_camera) == 2 and similar and separated:
+        concurrent = len({t for t, _ in on_camera[0].samples} & {t for t, _ in on_camera[1].samples})
+        if len(on_camera) == 2 and similar and separated and concurrent >= max(1, MIN_TRACK_PRESENCE * shot_frames):
             people = sorted([a, b], key=lambda box: box.cx)
             return ShotLayout(0, 0, LayoutType.TWO_SHOT, people=people), None
         if len(on_camera) > 2:
@@ -777,7 +785,10 @@ class LayoutAnalyzer:
                 shot.focus_path = smooth_focus_path(rel, shot_end - shot_start, crop_w_frac)
 
             if vision and self._vision_enabled():
-                keyframe = self._pick_keyframe(keyframes, (shot_start + shot_end) // 2)
+                keyframe = self._pick_keyframe(
+                    [k for k in keyframes if shot_start <= k[0] < shot_end],
+                    (shot_start + shot_end) // 2,
+                )
                 if keyframe is not None:
                     result, cost = await self._vision_classify(keyframe, shot_frames, shot)
                     vision_cost += cost
@@ -904,7 +915,8 @@ class LayoutAnalyzer:
                 hsv = cv2.cvtColor(cv2.resize(image, (160, 90)), cv2.COLOR_BGR2HSV)
                 hist = cv2.calcHist([hsv], [0, 1], None, [24, 16], [0, 180, 0, 256])
                 cv2.normalize(hist, hist)
-                frames.append(FrameInfo(t_ms=t_ms, faces=boxes, hist=hist))
+                appearance = cv2.resize(image, (32, 18), interpolation=cv2.INTER_AREA).astype(np.float32) / 255.0
+                frames.append(FrameInfo(t_ms=t_ms, faces=boxes, hist=hist, appearance=appearance))
 
                 if index % keyframe_every == 0:
                     ok, jpg = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -967,7 +979,8 @@ class LayoutAnalyzer:
         self, keyframe: bytes, shot_frames: list[FrameInfo], heuristic: ShotLayout,
     ) -> tuple[Optional[dict], float]:
         """Ask the vision model about one keyframe; cached per visual setup."""
-        signature = (heuristic.layout, len(heuristic.people))
+        # Approximate histogram equality cannot establish identical geometry.
+        signature = (heuristic.layout, len(heuristic.people), hashlib.sha256(keyframe).digest())
         image = cv2.imdecode(np.frombuffer(keyframe, np.uint8), cv2.IMREAD_COLOR)
         hsv = cv2.cvtColor(cv2.resize(image, (160, 90)), cv2.COLOR_BGR2HSV)
         hist = cv2.calcHist([hsv], [0, 1], None, [24, 16], [0, 180, 0, 256])

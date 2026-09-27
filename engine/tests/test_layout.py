@@ -565,3 +565,55 @@ def test_qwen_vision_explicitly_disables_reasoning(monkeypatch):
     result, _ = asyncio.run(analyzer._vision_classify(
         image.tobytes(), [], ShotLayout(0, 1000, LayoutType.TALKING_HEAD)))
     assert result["layout"] == "talking_head"
+
+
+def test_camera_cut_with_same_colors_resets_layout():
+    # Rearranged studio geometry can have the exact same global histogram.
+    first = np.zeros((18, 32, 3), np.float32)
+    first[:, :16] = 1
+    second = first[:, ::-1].copy()
+    fr = frames(8000, lambda t: [HEAD])
+    for f in fr:
+        f.appearance = first if f.t_ms < 4000 else second
+    assert len(segment_shots(fr, 8000)) == 2
+
+
+def test_people_seen_in_separate_shots_are_not_a_two_shot():
+    left, right = Box(.15,.2,.12,.25), Box(.72,.2,.12,.25)
+    fr = frames(4000, lambda t: [left] if t < 2000 else [right])
+    shot, _ = classify_shot(track_faces(fr),len(fr),SRC_W,SRC_H)
+    assert shot.layout != LayoutType.TWO_SHOT
+
+
+def test_small_motion_does_not_split_shot():
+    fr = frames(8000, lambda t: [HEAD])
+    for i, f in enumerate(fr):
+        f.appearance = np.full((18, 32, 3), (i % 2) * .04, np.float32)
+    assert segment_shots(fr, 8000) == [(0, 8000)]
+
+
+def test_vision_cache_does_not_reuse_boxes_for_rearranged_scene(monkeypatch):
+    import asyncio
+    import cv2
+    import json
+    from unittest.mock import AsyncMock
+    from clip_engine.config import Settings
+    from clip_engine.services import layout_analyzer as module
+
+    analyzer = LayoutAnalyzer.__new__(LayoutAnalyzer)
+    analyzer.settings = Settings(_env_file=None)
+    analyzer._vision_cache = []
+    analyzer._get_client = AsyncMock(return_value=object())
+    completion = AsyncMock(return_value=(
+        {"choices": [{"message": {"content": json.dumps({"layout": "talking_head"})}}]}, {}))
+    monkeypatch.setattr(module, "chat_completion", completion)
+    img = np.zeros((90, 160, 3), np.uint8)
+    img[:, :80] = 255
+    first = cv2.imencode('.jpg', img)[1].tobytes()
+    second = cv2.imencode('.jpg', img[:, ::-1])[1].tobytes()
+    shot = ShotLayout(0, 1000, LayoutType.TALKING_HEAD)
+    async def check():
+        for keyframe in (first, second, first):
+            await analyzer._vision_classify(keyframe, [], shot)
+    asyncio.run(check())
+    assert completion.await_count == 2

@@ -389,3 +389,51 @@ at the reported timestamps; check cuts, require two concurrent distinct tracks
 for stacked layout, track crop centers over time, and validate face containment
 in the final crop. Evaluate another detector only after measuring YuNet misses.
 No detector replacement or claim of framing repair was made in this preset change.
+
+
+## Dynamic framing experiment ? 2026-09-27
+
+Baseline saved at a9e0cb2 on `codex/backup-before-dynamic-framing`;
+implementation is on `codex/dynamic-framing`. `ours/upstream-overlay` remains
+at the saved baseline. Launch the current checkout using `start-windows.cmd`.
+
+Confirmed on source `yt-wiwCiRabml0.mp4`, window 1381850?1443970ms:
+250 samples at 4 FPS were previously grouped into one 62.42s shot. The source
+visibly changes camera six times. Histogram distances at those cuts were
+0.194?0.365, below the old 0.42 threshold. Spatial thumbnail differences were
+0.156?0.245, versus at most 0.048 at other adjacent samples in this window.
+
+Changes:
+- Combine spatial thumbnail difference with the existing histogram detector.
+- Reclassify and reset framing at detected cuts; keep vision keyframes inside
+  their own shot rather than borrowing a frame from another shot.
+- Require concurrent face tracks for heuristic two-person stacking.
+- Reuse vision coordinates only for identical JPEGs and matching heuristic
+  signatures; similar studio colors no longer establish equivalent geometry.
+
+Observed result: seven shots at relative boundaries 0, 9.125, 16.125, 22.375,
+32.125, 44.125, 57.125, 62.420 seconds. An offline 360x640 FFmpeg preview
+shows single-person crops for close-ups and two distinct people in stacked
+shots. Evidence is local and ignored under `.pytest_cache/framing-evidence/`:
+`dynamic-plan.json`, `dynamic-preview.mp4`, `dynamic-preview.jpg`.
+58 layout tests passed, including real FFmpeg rendering and regressions for
+same-color camera changes, nonconcurrent faces, minor motion and vision cache.
+The first two regressions failed against the baseline before implementation.
+
+Limits: this preview did not call Qwen or retranscribe. YuNet misses one face
+in the wide studio shots, so the offline heuristic preview selects only the
+woman there. Quality requests vision separately for the new shots, but that
+paid end-to-end result remains unverified. Sampling at 4 FPS can shift cut
+boundaries by roughly 125ms; sub-1.2s shots are still merged. Dissolves, fast
+motion and other videos need evaluation. More detected shots and stricter
+vision caching can increase the number of paid vision calls. No claim that
+all framing errors are solved, and no replacement face model was added.
+
+Codex integration research: official Codex App Server supports ChatGPT login
+and localImage inputs, so a local BridgeClip backend could delegate planning
+and sampled-frame analysis to Codex within subscription limits. This is an
+unimplemented integration proposal. Sites alone does not implement that
+bridge. Subscription-based file transcription with word timestamps was not
+confirmed; retain cached Whisper until such a path is verified.
+Sources: https://learn.chatgpt.com/docs/app-server and
+https://learn.chatgpt.com/docs/auth (checked 2026-09-27).
