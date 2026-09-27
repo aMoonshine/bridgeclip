@@ -160,3 +160,22 @@ test('Codex model persists and reaches only the isolated bridge configuration', 
     assert.throws(() => store.savePublicSettings({ codexModel: 'bad\nmodel' }))
   })
 })
+
+ test('output folder changes retain access to previous libraries and reasoning reaches engine', () => {
+  withStore(store => {
+   const before = store.loadSettings().outputDirectory
+   store.savePublicSettings({outputDirectory: require('node:path').join(before, 'next'), codexReasoning: 'high'})
+   const saved=store.loadSettings()
+   assert.ok(saved.outputLibraries.includes(before))
+   assert.equal(saved.codexReasoning,'high')
+   assert.equal(store.getSettingsForBridge(saved).CODEX_REASONING,'high')
+  })
+ })
+
+test('renderer cannot add arbitrary output libraries', () => {
+ withStore(store => {
+  const outside=require('node:path').resolve('not-selected')
+  store.savePublicSettings({outputLibraries:[outside]})
+  assert.ok(!store.loadSettings().outputLibraries.includes(outside))
+ })
+})

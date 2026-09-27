@@ -1016,7 +1016,7 @@ Do not overlap clips by more than 5 seconds."""
         if self.settings.analysis_provider == "codex":
             from clip_engine.services.codex_provider import completion, CodexError
             try:
-                return await completion(messages, clip_plan_schema(getattr(self, "_current_longform", False)), self.settings.codex_model)
+                return await completion(messages, clip_plan_schema(getattr(self, "_current_longform", False)), self.settings.codex_model, self.settings.codex_reasoning)
             except CodexError as e:
                 raise IntelligencePlanningError(str(e), retryable=False, reason="codex") from e
         client = await self._get_client()

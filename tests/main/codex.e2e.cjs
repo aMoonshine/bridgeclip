@@ -14,8 +14,8 @@ test('Codex connection and model selection persist in Electron', { timeout: 9000
   await app.evaluate(({ ipcMain }) => {
     ipcMain.removeHandler('codex:status')
     ipcMain.handle('codex:status', () => ({ connected: true, models: [
-      { id: 'gpt-6-luna', name: 'GPT-6 Luna', vision: true },
-      { id: 'gpt-6-sol', name: 'GPT-6 Sol', vision: true },
+      { id: 'gpt-6-luna', name: 'GPT-6 Luna', vision: true, reasoningEfforts: ['low', 'high'], defaultReasoningEffort: 'low' },
+      { id: 'gpt-6-sol', name: 'GPT-6 Sol', vision: true, reasoningEfforts: ['low', 'high'], defaultReasoningEffort: 'low' },
       { id: 'text-only', name: 'Text only', vision: false }
     ] }))
   })
@@ -27,7 +27,10 @@ test('Codex connection and model selection persist in Electron', { timeout: 9000
   assert.equal(await picker.locator('option').count(), 2)
   await picker.selectOption('gpt-6-sol')
   await page.waitForFunction(async () => (await window.bridgeclip.settings.load()).codexModel === 'gpt-6-sol')
+  await page.getByLabel('Reasoning level').selectOption('high')
+  await page.waitForFunction(async () => (await window.bridgeclip.settings.load()).codexReasoning === 'high')
   await page.reload()
+  assert.equal((await page.evaluate(() => window.bridgeclip.settings.load())).codexReasoning, 'high')
   assert.equal((await page.evaluate(() => window.bridgeclip.settings.load())).codexModel, 'gpt-6-sol')
   assert.deepEqual(errors, [])
 })

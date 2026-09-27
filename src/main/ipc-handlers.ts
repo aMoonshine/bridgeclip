@@ -1,3 +1,4 @@
+import { mediaLibrary, outputLibraries } from './output-libraries'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, realpathSync } from 'fs'
 import { loadSettings, publicSettings, replaceApiKey, savePublicSettings, ensureSourceCacheDir, type ApiKeyName, type PublicSettings } from './settings-store'
@@ -173,17 +174,18 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
         if (!codex.connected) throw new Error('Sign in to ChatGPT in Settings before starting a Codex run.')
         const model = codex.models.find(m => m.id === loadSettings().codexModel)
         if (!model || !model.vision) throw new Error('Choose an available Codex model with image support in Settings.')
+        if (!model.reasoningEfforts?.includes(loadSettings().codexReasoning)) throw new Error('Refresh Codex models and choose a supported reasoning level.')
       }
       if (config.clippingMode !== 'advanced' && config.transcriptionModel) await resolveModel('transcription', config.transcriptionModel)
       if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl)
-      else assertMediaPath(config.videoUrl, loadSettings().outputDirectory)
+      else assertMediaPath(config.videoUrl, mediaLibrary(config.videoUrl))
       if (config.bannerChannelUrl) await assertPublicWebUrl(config.bannerChannelUrl)
     } catch (error) { return { error: error instanceof Error ? error.message : 'Invalid job options' } }
     const settings = loadSettings()
 
     if (!settings.openrouterApiKey) {
       logger.warn('job.start.missingKey', { key: 'OPENROUTER_API_KEY' })
-      return { error: 'OpenRouter API key is required for AI clip planning. Go to Settings to add it.' }
+      return { error: 'OpenRouter API key is required for Whisper transcription. Go to Settings to add it.' }
     }
 
     const enginePath = getEnginePath()
@@ -228,7 +230,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       return { error: 'Could not create the clipping run. Check the output folder and retry.' }
     }
     // Starts now when a slot is free; otherwise waits its turn in the queue.
-    const job = enqueueJob(jobId, config, settings.outputDirectory)
+    const job = enqueueJob(jobId, { ...config, codexModel: settings.codexModel, codexReasoning: settings.codexReasoning }, settings.outputDirectory)
     return { jobId, queued: job.status === 'queued' }
   })
 
@@ -254,20 +256,20 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     return false
   })
 
-  handle('history:list', () => {
-    const settings = loadSettings()
-    return getJobHistory(settings.outputDirectory, liveJobIds())
+  handle('history:list', async () => {
+    const entries = (await Promise.all(outputLibraries().map(root => getJobHistory(root, liveJobIds())))).flat()
+    return [...new Map(entries.map(entry => [entry.outputDir, entry])).values()].sort((a, b) => b.date.localeCompare(a.date))
   })
 
   handle('history:getJob', (_event, outputDir: string) => {
     assertAbsolutePath(outputDir)
-    if (!isWithinDirectory(outputDir, loadSettings().outputDirectory)) throw new Error('Job is outside the library')
-    return getJobOutput(outputDir, loadSettings().outputDirectory)
+    if (!isWithinDirectory(outputDir, mediaLibrary(outputDir))) throw new Error('Job is outside the library')
+    return getJobOutput(outputDir, mediaLibrary(outputDir))
   })
 
   handle('thumbnails:generate', async (_event, videoPath: string, seekSeconds?: number) => {
     if (isAutomationMedia(videoPath)) authorizeMedia(videoPath)
-    else assertMediaPath(videoPath, loadSettings().outputDirectory)
+    else assertMediaPath(videoPath, mediaLibrary(videoPath))
     if (seekSeconds !== undefined && (!Number.isFinite(seekSeconds) || seekSeconds < 0 || seekSeconds > 6 * 60 * 60)) throw new Error('Invalid thumbnail time')
     const thumbnail = await generateThumbnail(videoPath, seekSeconds)
     if (thumbnail) authorizeMedia(thumbnail)
@@ -284,19 +286,19 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     if (!existsSync(path)) return false
     // Check and open the same canonical name: an alias can hide a .app suffix.
     const canonical = realpathSync(path)
-    if (!isWithinDirectory(canonical, loadSettings().outputDirectory)) assertMediaPath(canonical, loadSettings().outputDirectory)
+    if (!isWithinDirectory(canonical, mediaLibrary(canonical))) assertMediaPath(canonical, mediaLibrary(canonical))
     const { statSync } = await import('fs')
     if (statSync(canonical).isDirectory()) {
       if (canonical.split(/[\\/]+/).some((part) => /\.(app|bundle)$/i.test(part))) throw new Error('Application bundles cannot be opened from the library')
     } else {
-      assertMediaPath(canonical, loadSettings().outputDirectory)
+      assertMediaPath(canonical, mediaLibrary(canonical))
     }
     return (await shell.openPath(canonical)) === ''
   })
 
   handle('shell:showItemInFolder', (_event, path: string) => {
     assertAbsolutePath(path)
-    if (!isWithinDirectory(path, loadSettings().outputDirectory)) assertMediaPath(path, loadSettings().outputDirectory)
+    if (!isWithinDirectory(path, mediaLibrary(path))) assertMediaPath(path, mediaLibrary(path))
     if (!existsSync(path)) return false
     shell.showItemInFolder(path)
     return true
@@ -324,7 +326,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     if (!Array.isArray(clips) || clips.length > 500) throw new Error('Invalid export selection')
     for (const clip of clips) {
       if (!clip || typeof clip.name !== 'string' || clip.name.length > 500) throw new Error('Invalid export selection')
-      assertMediaPath(clip.path, loadSettings().outputDirectory)
+      assertMediaPath(clip.path, mediaLibrary(clip.path))
     }
     if (!window || clips.length === 0) return { success: false, count: 0, failedCount: clips.length }
 
@@ -342,7 +344,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
 
     for (const clip of clips) {
       try {
-        const source = await openAuthorizedMedia(clip.path, loadSettings().outputDirectory)
+        const source = await openAuthorizedMedia(clip.path, mediaLibrary(clip.path))
         try {
           const ext = extname(clip.path) || '.mp4'
           const safeName = Array.from(clip.name).filter((char) => char.charCodeAt(0) >= 32).join('').replace(/[<>:"/\\|?*]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120) || 'clip'

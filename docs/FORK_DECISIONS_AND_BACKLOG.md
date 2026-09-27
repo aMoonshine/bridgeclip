@@ -447,3 +447,12 @@ Vision while testing the existing OpenRouter version. Implemented on
 See [CODEX_APP.md](CODEX_APP.md) for launch, model routes, verification and limits.
 Whisper transcription and the existing source/transcript cache remain in use.
 The experimental app does not replace the original dynamic-framing checkout.
+
+
+### 2026-09-27: Codex controls and performance follow-up
+
+See [CODEX_APP.md](CODEX_APP.md) for current behavior and measured evidence:
+Luna/Low default, model and reasoning controls, local confident close-ups plus
+batched Vision, two concurrent inference requests, retained output libraries.
+No claim of universal framing accuracy or full-run speedup; the benchmark is
+limited to concrete source samples. The standard OpenRouter checkout is separate.

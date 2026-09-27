@@ -1,3 +1,4 @@
+import { mediaLibrary } from './output-libraries'
 import './app-identity'
 import { stopCodexConnection } from './codex-service'
 import { app, BrowserWindow, nativeTheme, shell, protocol } from 'electron'
@@ -168,7 +169,7 @@ app.whenReady().then(() => {
       if (request.method !== 'GET' && request.method !== 'HEAD') return new Response(null, { status: 405 })
       const filePath = decodeURIComponent(request.url.slice('local-file://'.length))
       if (isAutomationMedia(filePath)) authorizeMedia(filePath)
-      media = await openAuthorizedMedia(filePath, loadSettings().outputDirectory)
+      media = await openAuthorizedMedia(filePath, mediaLibrary(filePath))
       const mimeType: Record<string, string> = {
         '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.mkv': 'video/x-matroska', '.webm': 'video/webm',
         '.avi': 'video/x-msvideo', '.mov': 'video/quicktime', '.flv': 'video/x-flv',

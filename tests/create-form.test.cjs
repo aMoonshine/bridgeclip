@@ -192,7 +192,7 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
     assert.equal(request.transcriptionModel, undefined)
     assert.equal(request.plannerModel, undefined)
     const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
-    assert.match(html, /Codex model selected in Settings/)
+    assert.match(html, /Selected:.*gpt-6-luna/)
   })
 
 

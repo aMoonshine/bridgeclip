@@ -593,6 +593,7 @@ class Settings(BaseSettings):
     # API Keys (required)
     openrouter_api_key: Optional[str] = None
     analysis_provider: str = "openrouter"
+    codex_reasoning: str = "low"
     codex_model: str = "gpt-6-luna"
 
     # Security - API authentication

@@ -617,3 +617,74 @@ def test_vision_cache_does_not_reuse_boxes_for_rearranged_scene(monkeypatch):
             await analyzer._vision_classify(keyframe, [], shot)
     asyncio.run(check())
     assert completion.await_count == 2
+
+
+def test_local_shortcut_requires_large_uninterrupted_single_person():
+    from clip_engine.services.layout_analyzer import confident_local_speaker
+    large = Box(.35, .15, .2, .3)
+    single = frames(4000, lambda t: [large])
+    shot, _ = classify_shot(track_faces(single), len(single), SRC_W, SRC_H)
+    assert confident_local_speaker(shot, single)
+    single[-1].faces = []
+    assert not confident_local_speaker(shot, single)
+    single[-1].faces = [large, Box(.7, .2, .1, .15)]
+    assert not confident_local_speaker(shot, single)
+    small = frames(4000, lambda t: [Box(.4, .4, .1, .1)])
+    assert not confident_local_speaker(shot, small)
+
+
+def test_codex_batch_preserves_ids_when_answers_are_reordered(monkeypatch):
+    import asyncio, json
+    from clip_engine.config import Settings
+    from clip_engine.services import codex_provider
+    analyzer = LayoutAnalyzer()
+    analyzer.settings = Settings(_env_file=None, analysis_provider='codex')
+    async def answer(messages, schema, model, effort):
+        content = messages[0]['content']
+        assert sum(part['type'] == 'image_url' for part in content) == 2
+        assert effort == 'low'
+        def result(index, layout, people):
+            return dict(frame_index=index, layout=layout, people=people,
+                        cam_box=[], screen_box=[], screen_focus=[])
+        data = {'frames': [result(7, 'two_shot', [[0,0,900,300],[0,600,900,950]]),
+                           result(2, 'talking_head', [[0,300,900,600]])]}
+        return {'choices':[{'message':{'content':json.dumps(data)}}]}, {}
+    monkeypatch.setattr(codex_provider, 'completion', answer)
+    results = asyncio.run(analyzer._vision_batch([(2,b'jpeg',[]),(7,b'jpeg',[])]))
+    assert results[2]['layout'] == 'talking_head'
+    assert results[7]['layout'] == 'two_shot'
+
+
+@pytest.mark.parametrize('returned', [[], [0,0], [0,4]])
+def test_codex_batch_rejects_missing_duplicate_or_unknown_ids(monkeypatch, returned):
+    import asyncio, json
+    from clip_engine.config import Settings
+    from clip_engine.services import codex_provider
+    analyzer = LayoutAnalyzer()
+    analyzer.settings = Settings(_env_file=None, analysis_provider='codex')
+    async def answer(*args):
+        return {'choices':[{'message':{'content':json.dumps({'frames':[{'frame_index':i} for i in returned]})}}]}, {}
+    monkeypatch.setattr(codex_provider, 'completion', answer)
+    with pytest.raises(codex_provider.CodexError, match='incomplete shot'):
+        asyncio.run(analyzer._vision_batch([(0,b'jpeg',[]),(1,b'jpeg',[])]))
+
+
+def test_batched_analysis_preserves_cut_timestamps_and_skips_reliable_closeup(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock
+    from clip_engine.config import Settings
+    from clip_engine.services import layout_analyzer as module
+    analyzer = LayoutAnalyzer()
+    analyzer.settings = Settings(_env_file=None, analysis_provider='codex')
+    monkeypatch.setattr(LayoutAnalyzer, 'available', property(lambda self: True))
+    single = frames(2000, lambda t: [Box(.4,.15,.2,.3)])
+    wide = frames(2000, lambda t: [Box(.2,.2,.05,.1),Box(.7,.2,.05,.1)])
+    for frame in wide: frame.t_ms += 2000
+    monkeypatch.setattr(analyzer,'_decode_and_detect',lambda *args:(single+wide,[(1000,b'a'),(3000,b'b')]))
+    monkeypatch.setattr(module,'segment_shots',lambda *args:[(0,2000),(2000,4000)])
+    batch = AsyncMock(return_value={1:{'layout':'two_shot','people':[[100,100,950,400],[100,600,950,950]],'cam_box':[],'screen_box':[],'screen_focus':[]}})
+    monkeypatch.setattr(analyzer,'_vision_batch',batch)
+    result=asyncio.run(analyzer.analyze('unused',0,4000,SRC_W,SRC_H))
+    assert [(s.start_ms,s.end_ms,s.layout) for s in result.shots] == [(0,2000,'talking_head'),(2000,4000,'two_shot')]
+    assert batch.await_count == 1
+    assert [item[0] for item in batch.call_args.args[0]] == [1]

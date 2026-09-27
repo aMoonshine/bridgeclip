@@ -511,6 +511,21 @@ def classify_shot(
     return ShotLayout(0, 0, LayoutType.SCREEN), None
 
 
+def confident_local_speaker(shot: ShotLayout, frames: list[FrameInfo]) -> bool:
+    """Only bypass Vision for a persistent, large, single face within one detected shot.
+
+    Small faces, intermittent detections, additional people and screen/webcam layouts
+    remain uncertain. This is a conservative shortcut, not a scene understanding model.
+    """
+    if shot.layout != LayoutType.TALKING_HEAD or len(shot.people) != 1 or len(frames) < 4:
+        return False
+    if any(len(frame.faces) != 1 for frame in frames):
+        return False
+    track = track_faces(frames)
+    return (len(track) == 1 and all(face.h >= 0.22 for frame in frames for face in frame.faces)
+            and not is_corner_overlay(track[0].median_box()))
+
+
 def smooth_focus_path(
     samples: list[tuple[int, Box]],
     duration_ms: int,
@@ -775,31 +790,43 @@ class LayoutAnalyzer:
         shots: list[ShotLayout] = []
         vision_cost = 0.0
 
+        prepared = []
         for shot_start, shot_end in segment_shots(frames, duration_ms):
             shot_frames = [f for f in frames if shot_start <= f.t_ms < shot_end]
             tracks = track_faces(shot_frames)
             shot, main_track = classify_shot(tracks, len(shot_frames), src_w, src_h)
-
             if main_track is not None:
                 rel = [(t - shot_start, b) for t, b in main_track.samples]
                 shot.focus_path = smooth_focus_path(rel, shot_end - shot_start, crop_w_frac)
-
-            if vision and self._vision_enabled():
-                keyframe = self._pick_keyframe(
-                    [k for k in keyframes if shot_start <= k[0] < shot_end],
-                    (shot_start + shot_end) // 2,
-                )
-                if keyframe is not None:
-                    result, cost = await self._vision_classify(keyframe, shot_frames, shot)
-                    vision_cost += cost
-                    if result:
-                        refined = merge_vision_result(shot, result, src_w, src_h)
-                        if refined.layout == LayoutType.TALKING_HEAD and not refined.focus_path:
-                            focus = refined.people[0] if refined.people else None
-                            refined.focus_path = [(0, focus.cx, focus.cy)] if focus else [(0, 0.5, 0.5)]
-                        shot = refined
-
             shot.start_ms, shot.end_ms = shot_start, shot_end
+            local_confident = self.settings.analysis_provider == "codex" and confident_local_speaker(shot, shot_frames)
+            keyframe = self._pick_keyframe(
+                [k for k in keyframes if shot_start <= k[0] < shot_end],
+                (shot_start + shot_end) // 2,
+            ) if vision and self._vision_enabled() and not local_confident else None
+            prepared.append((shot, shot_frames, keyframe))
+
+        results = {}
+        if self.settings.analysis_provider == "codex":
+            # Finish a clip's scene checks together so it can begin encoding immediately.
+            pending = [(index, keyframe, shot_frames) for index, (_, shot_frames, keyframe)
+                       in enumerate(prepared) if keyframe is not None]
+            logger.info("Codex shot checks: local=%s vision=%s requests=%s",
+                        len(prepared) - len(pending), len(pending), math.ceil(len(pending) / 6))
+            for offset in range(0, len(pending), 6):
+                results.update(await self._vision_batch(pending[offset:offset + 6]))
+        for index, (shot, shot_frames, keyframe) in enumerate(prepared):
+            result = results.get(index)
+            if keyframe is not None and self.settings.analysis_provider != "codex":
+                result, cost = await self._vision_classify(keyframe, shot_frames, shot)
+                vision_cost += cost
+            if result:
+                refined = merge_vision_result(shot, result, src_w, src_h)
+                refined.start_ms, refined.end_ms = shot.start_ms, shot.end_ms
+                shot = refined
+                if shot.layout == LayoutType.TALKING_HEAD and not shot.focus_path:
+                    focus = shot.people[0] if shot.people else None
+                    shot.focus_path = [(0, focus.cx, focus.cy)] if focus else [(0, 0.5, 0.5)]
             if shot.layout == LayoutType.SCREEN_CAM:
                 sub_shots = self._follow_webcam(shot, shot_frames, src_w, src_h)
             else:
@@ -975,6 +1002,47 @@ class LayoutAnalyzer:
     def _vision_enabled(self) -> bool:
         return bool(self.settings.layout_vision_enabled and (self.settings.analysis_provider == "codex" or self.settings.openrouter_api_key))
 
+    async def _vision_batch(self, frames: list[tuple[int, bytes, list[FrameInfo]]]) -> dict[int, dict]:
+        """Send up to six separate images, retaining coordinates and identity for each shot."""
+        from clip_engine.services.codex_provider import completion, CodexError
+        if not frames or len(frames) > 6:
+            raise ValueError("Vision batches require one to six frames")
+        ids = [index for index, _, _ in frames]
+        item = {**VISION_SCHEMA, "properties": {
+            "frame_index": {"type": "integer", "enum": ids}, **VISION_SCHEMA["properties"],
+        }, "required": ["frame_index", *VISION_SCHEMA["required"]]}
+        schema = {"type": "object", "properties": {"frames": {"type": "array", "items": item}},
+                  "required": ["frames"], "additionalProperties": False}
+        content = [{"type": "text", "text":
+            "Analyze each labelled image independently. Return exactly one result per frame_index. "
+            "Each box uses coordinates normalized to 0-1000 within THAT image, never pixel coordinates. "
+            "Do not combine people or coordinates across images. " + VISION_PROMPT.replace("{faces}", "provided separately below")}]
+        for index, keyframe, samples in frames:
+            faces = sorted({tuple(round(v, 3) for v in box.to_list())
+                            for frame in samples[::max(1, len(samples) // 4)] for box in frame.faces})[:6]
+            content += [{"type": "text", "text": f"frame_index={index}; detected faces={json.dumps(faces)}"},
+                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(keyframe).decode()}}]
+        body, _ = await completion([{"role": "user", "content": content}], schema,
+                                   self.settings.codex_model, self.settings.codex_reasoning)
+        text, _ = message_text(body)
+        try:
+            items = json.loads(text or "")["frames"]
+            result = {item["frame_index"]: item for item in items}
+            if len(items) != len(ids) or set(result) != set(ids):
+                raise ValueError("missing or duplicate frame")
+            for item in items:
+                if item.get("layout") not in LayoutType.ALL:
+                    raise ValueError("invalid layout")
+                for field in ("cam_box", "screen_box", "screen_focus", "people"):
+                    boxes = item[field] if field == "people" else [item[field]]
+                    for box in boxes:
+                        if box and (len(box) != 4 or any(type(v) is not int or not 0 <= v <= 1000 for v in box)
+                                    or box[0] >= box[2] or box[1] >= box[3]):
+                            raise ValueError("invalid coordinates")
+            return result
+        except (KeyError, ValueError, TypeError) as error:
+            raise CodexError("Codex returned incomplete shot checks. Retry the clip.") from error
+
     async def _vision_classify(
         self, keyframe: bytes, shot_frames: list[FrameInfo], heuristic: ShotLayout,
     ) -> tuple[Optional[dict], float]:
@@ -1020,7 +1088,7 @@ class LayoutAnalyzer:
         if self.settings.analysis_provider == "codex":
             from clip_engine.services.codex_provider import completion
             # Surface a subscription/auth failure instead of silently losing Quality vision.
-            body, usage = await completion(payload["messages"], VISION_SCHEMA, self.settings.codex_model)
+            body, usage = await completion(payload["messages"], VISION_SCHEMA, self.settings.codex_model, self.settings.codex_reasoning)
             content, _ = message_text(body)
             result = json.loads(content or "")
             self._vision_cache.append((hist, signature, result))

@@ -26,6 +26,7 @@ export interface ClipSettings {
   downloadResolution: 'source' | '2160' | '1440' | '1080' | '720'
   renderConcurrency: number
   sourceCacheDirectory: string
+  codexReasoning: string
   codexModel: string
 }
 

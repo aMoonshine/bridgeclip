@@ -92,9 +92,10 @@ export function JobProgress({ job, onCancel, leading }: JobProgressProps): React
             {job.step}
           </p>
 
+          {job.status === 'rendering' && job.request.clippingMode === 'quality' && <p className="mt-2 text-center text-xs text-ink-muted">Checking shot composition and encoding clips. Image checks can take longer than encoding.</p>}
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
             {(job.request.videoSpeed ?? 1) > 1 && (
-              <InfoChip icon={<Gauge />}>{job.request.videoSpeed}× export speed</InfoChip>
+              <InfoChip icon={<Gauge />}>{job.request.videoSpeed}× playback speed</InfoChip>
             )}
             {job.clipsTotal > 0 && (
               <InfoChip icon={<Clapperboard />}>

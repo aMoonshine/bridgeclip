@@ -1,0 +1,234 @@
+[
+  {
+    "frame": "frame-0.jpg",
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "answer": {
+      "layout": "talking_head",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          105,
+          279,
+          999,
+          700
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8984,
+      "completion_tokens": 41,
+      "total_tokens": 9025,
+      "cost": 0.0
+    },
+    "seconds": 4.596
+  },
+  {
+    "frame": "frame-0.jpg",
+    "model": "gpt-6-luna",
+    "effort": "high",
+    "answer": {
+      "layout": "talking_head",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          112,
+          226,
+          1000,
+          692
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8987,
+      "completion_tokens": 146,
+      "total_tokens": 9133,
+      "cost": 0.0
+    },
+    "seconds": 11.065
+  },
+  {
+    "frame": "frame-0.jpg",
+    "model": "gpt-6-sol",
+    "effort": "low",
+    "answer": {
+      "layout": "talking_head",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          108,
+          278,
+          997,
+          700
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8466,
+      "completion_tokens": 41,
+      "total_tokens": 8507,
+      "cost": 0.0
+    },
+    "seconds": 7.303
+  },
+  {
+    "frame": "frame-0.jpg",
+    "model": "gpt-6-sol",
+    "effort": "high",
+    "answer": {
+      "layout": "talking_head",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          108,
+          277,
+          1000,
+          703
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8984,
+      "completion_tokens": 123,
+      "total_tokens": 9107,
+      "cost": 0.0
+    },
+    "seconds": 7.057
+  },
+  {
+    "frame": "frame-35000.jpg",
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "answer": {
+      "layout": "two_shot",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          85,
+          174,
+          936,
+          426
+        ],
+        [
+          93,
+          485,
+          892,
+          730
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8469,
+      "completion_tokens": 49,
+      "total_tokens": 8518,
+      "cost": 0.0
+    },
+    "seconds": 5.665
+  },
+  {
+    "frame": "frame-35000.jpg",
+    "model": "gpt-6-luna",
+    "effort": "high",
+    "answer": {
+      "layout": "two_shot",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          114,
+          175,
+          931,
+          425
+        ],
+        [
+          92,
+          492,
+          889,
+          772
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8466,
+      "completion_tokens": 197,
+      "total_tokens": 8663,
+      "cost": 0.0
+    },
+    "seconds": 7.444
+  },
+  {
+    "frame": "frame-35000.jpg",
+    "model": "gpt-6-sol",
+    "effort": "low",
+    "answer": {
+      "layout": "two_shot",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          41,
+          119,
+          336,
+          273
+        ],
+        [
+          30,
+          313,
+          320,
+          499
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8466,
+      "completion_tokens": 49,
+      "total_tokens": 8515,
+      "cost": 0.0
+    },
+    "seconds": 4.947
+  },
+  {
+    "frame": "frame-35000.jpg",
+    "model": "gpt-6-sol",
+    "effort": "high",
+    "answer": {
+      "layout": "two_shot",
+      "cam_box": [],
+      "screen_box": [],
+      "screen_focus": [],
+      "people": [
+        [
+          114,
+          189,
+          936,
+          428
+        ],
+        [
+          89,
+          489,
+          892,
+          780
+        ]
+      ]
+    },
+    "usage": {
+      "prompt_tokens": 8469,
+      "completion_tokens": 155,
+      "total_tokens": 8624,
+      "cost": 0.0
+    },
+    "seconds": 8.994
+  }
+]

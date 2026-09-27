@@ -80,7 +80,7 @@ function safeMetrics(value: unknown): Record<string, unknown> | null {
     const requested = value.requested_settings
     const safe: Record<string, unknown> = {}
     if (['quality', 'economy', 'advanced'].includes(requested.clipping_mode as string)) safe.clipping_mode = requested.clipping_mode
-    for (const field of ['planner_model', 'transcription_model']) {
+    for (const field of ['planner_model', 'transcription_model', 'codex_reasoning']) {
       const model = boundedText(requested[field], 120)
       if (model !== null) safe[field] = model
     }

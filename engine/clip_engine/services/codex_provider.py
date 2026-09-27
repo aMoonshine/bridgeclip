@@ -6,6 +6,9 @@ import os
 import shutil
 import subprocess
 import tempfile
+from time import perf_counter
+import logging
+logger = logging.getLogger(__name__)
 from pathlib import Path
 
 
@@ -127,11 +130,11 @@ class CodexSession:
         return models
 
     async def account(self):
-        result = await self.request("account/read", {"refreshToken": True})
+        result = await self.request("account/read", {"refreshToken": False})
         account = result.get("account") or {}
         return account.get("type") == "chatgpt"
 
-    async def complete(self, messages, schema, model):
+    async def complete(self, messages, schema, model, effort="low"):
         if not await self.account():
             raise CodexError("Sign in to ChatGPT in BridgeClip Codex Settings before clipping.")
         catalog = await self.models()
@@ -170,7 +173,8 @@ class CodexSession:
         })
         tid = thread["thread"]["id"]
         efforts = [e["reasoningEffort"] for e in selected.get("supportedReasoningEfforts", [])]
-        effort = "low" if "low" in efforts else selected.get("defaultReasoningEffort", "medium")
+        if effort not in efforts:
+            raise CodexError("The selected reasoning level is unavailable for this model. Refresh models and choose a supported level.")
         turn = await self.request("turn/start", {"threadId": tid, "input": inputs, "outputSchema": schema, "effort": effort})
         turn_id = turn["turn"]["id"]
         text = ""
@@ -216,17 +220,23 @@ class CodexSession:
         }
 
 
-async def completion(messages, schema, model):
-    # Serialize per engine process: rendering may request several vision analyses concurrently.
+async def completion(messages, schema, model, effort="low"):
+    # Two independent analyses may overlap; each retains its own isolated process and context.
+    queued = perf_counter()
     async with _gate():
-        async with CodexSession() as session:
-            return await session.complete(messages, schema, model)
+        started = perf_counter()
+        try:
+            async with CodexSession() as session:
+                return await session.complete(messages, schema, model, effort)
+        finally:
+            logger.info("Codex analysis model=%s reasoning=%s queue_s=%.3f analysis_s=%.3f",
+                        model, effort, started - queued, perf_counter() - started)
 
 
 def _gate():
     loop = asyncio.get_running_loop()
     if not hasattr(loop, "_bridgeclip_codex_gate"):
-        loop._bridgeclip_codex_gate = asyncio.Semaphore(1)
+        loop._bridgeclip_codex_gate = asyncio.Semaphore(2)
     return loop._bridgeclip_codex_gate
 
 
@@ -248,7 +258,7 @@ async def main():
                             break
             connected = await session.account()
             models = await session.models() if connected else []
-            print(json.dumps({"connected": connected, "models": [{"id": m.get("model", m["id"]), "name": m["displayName"], "vision": "image" in m.get("inputModalities", ["text", "image"])} for m in models]}), flush=True)
+            print(json.dumps({"connected": connected, "models": [{"id": m.get("model", m["id"]), "name": m["displayName"], "vision": "image" in m.get("inputModalities", ["text", "image"]), "reasoningEfforts": [e["reasoningEffort"] for e in m.get("supportedReasoningEfforts", [])], "defaultReasoningEffort": m.get("defaultReasoningEffort", "low")} for m in models]}), flush=True)
     except Exception as exc:
         print(json.dumps({"error": str(exc) if isinstance(exc, CodexError) else "Could not connect to Codex. Check installation and sign-in."}), flush=True)
         sys.exit(1)

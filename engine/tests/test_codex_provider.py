@@ -17,13 +17,16 @@ for line in sys.stdin:
  request=json.loads(line)
  method=request['method']; params=request.get('params',{}); result={}
  if method=='initialize': result={}
- elif method=='account/read': result={'account':None if mode=='logout' else {'type':'chatgpt'}}
- elif method=='model/list': result={'data':[{'id':'gpt-6-luna','model':'gpt-6-luna','displayName':'Luna','inputModalities':['text','image'],'supportedReasoningEfforts':[{'reasoningEffort':'low'}]}]}
+ elif method=='account/read':
+  assert params['refreshToken'] is False
+  result={'account':None if mode=='logout' else {'type':'chatgpt'}}
+ elif method=='model/list': result={'data':[{'id':'gpt-6-luna','model':'gpt-6-luna','displayName':'Luna','inputModalities':['text','image'],'supportedReasoningEfforts':[{'reasoningEffort':'low'},{'reasoningEffort':'high'}]}]}
  elif method=='thread/start':
   assert params['ephemeral'] is True and params['sandbox']=='read-only'
   result={'thread':{'id':'thread1'}}
  elif method=='turn/start':
   assert params['outputSchema']['type']=='object'
+  assert params['effort']==('high' if mode=='high' else 'low')
   for item in params['input']:
    if item['type']=='localImage': assert Path(item['path']).read_bytes()==b'jpeg bytes'
   result={'turn':{'id':'turn1'}}
@@ -107,3 +110,49 @@ def test_planner_routes_codex_without_openrouter(monkeypatch):
  with pytest.raises(IntelligencePlanningError) as error:
   asyncio.run(planner._call_openrouter('irrelevant',[]))
  assert error.value.retryable is False and error.value.reason=='codex'
+
+
+def test_selected_reasoning_reaches_server(fake):
+ setup,_=fake;setup('high')
+ async def run():
+  async with module.CodexSession() as client:
+   await client.complete([],SCHEMA,'gpt-6-luna','high')
+ asyncio.run(run())
+
+
+def test_unsupported_reasoning_is_rejected(fake):
+ setup,_=fake;setup('ok')
+ async def run():
+  async with module.CodexSession() as client:
+   await client.complete([],SCHEMA,'gpt-6-luna','none')
+ with pytest.raises(module.CodexError,match='reasoning level'): asyncio.run(run())
+
+
+def test_vision_queue_overlaps_two_requests_and_remains_bounded(monkeypatch):
+ active=0
+ peak=0
+ release=asyncio.Event()
+ both=asyncio.Event()
+ class Session:
+  async def __aenter__(self): return self
+  async def __aexit__(self,*args): pass
+  async def complete(self,*args):
+   nonlocal active,peak
+   active+=1;peak=max(peak,active)
+   if active==2: both.set()
+   try: await release.wait()
+   finally: active-=1
+   return {},{}
+ monkeypatch.setattr(module,'CodexSession',Session)
+ async def run():
+  tasks=[asyncio.create_task(module.completion([],SCHEMA,'gpt-6-luna')) for _ in range(5)]
+  try:
+   await asyncio.wait_for(both.wait(),1)
+   assert active==2
+   release.set()
+   await asyncio.gather(*tasks)
+   assert peak==2
+  finally:
+   for task in tasks: task.cancel()
+   await asyncio.gather(*tasks,return_exceptions=True)
+ asyncio.run(run())

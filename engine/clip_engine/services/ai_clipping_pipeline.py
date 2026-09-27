@@ -646,6 +646,7 @@ class AIClippingPipeline:
                 "requested_settings": {
                     "clipping_mode": self.settings.clipping_mode,
                     "planner_model": self.settings.planner_model,
+                    "codex_reasoning": self.settings.codex_reasoning if self.settings.analysis_provider == "codex" else None,
                     "transcription_model": self.settings.transcription_model,
                     "aspect_ratio": request.aspect_ratio,
                     "layout_style": request.layout_style,

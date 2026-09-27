@@ -15,7 +15,7 @@ import type { OpenRouterModel } from '../shared/openrouter-models'
 import { finishRunRecord, type StoredRunStatus } from './run-history'
 import { resolveBinary } from './tools'
 
-export type ClipJobConfig = ClipJobRequest & { plannerCapabilities?: OpenRouterModel }
+export type ClipJobConfig = ClipJobRequest & { plannerCapabilities?: OpenRouterModel; codexModel?: string; codexReasoning?: string }
 
 /**
  * Where a run's events go. The job manager passes its own sink so it can track
@@ -348,7 +348,7 @@ export function startClipJob(
     } catch { logger.warn('job.history.writeFailed', { jobId }) }
     send('job:error', payload)
   }
-  const envVars = getSettingsForBridge(settings)
+  const envVars = getSettingsForBridge({ ...settings, codexModel: config.codexModel ?? settings.codexModel, codexReasoning: config.codexReasoning ?? settings.codexReasoning })
   const enginePath = getEnginePath()
   const bridgePath = getBridgeRunnerPath()
   const pythonPath = resolvePythonPath(enginePath, settings.pythonPath)

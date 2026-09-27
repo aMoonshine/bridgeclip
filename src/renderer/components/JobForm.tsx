@@ -1,3 +1,5 @@
+import { useSettingsStore } from '../store/use-settings-store'
+import { CodexSettings } from './CodexSettings'
 import { normalizeVideoSource, twitchSourceError } from '../../shared/video-source'
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { ArrowLeft, ArrowRight, Check, CheckCircle2, Clock3, ListVideo, Minus, Plus, Sparkles } from 'lucide-react'
@@ -408,7 +410,7 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
           })}
         </div>
         {draft.clippingMode === 'advanced' && <AdvancedModels draft={draft} update={update} required />}
-        {draft.clippingMode !== 'advanced' && <p className="mt-2 text-2xs text-ink-subtle">Uses the Codex model selected in Settings and cached Whisper transcription. Codex subscription limits apply.</p>}
+        {draft.clippingMode !== 'advanced' && <CodexSettings compact />}
       </Group>
       <Group label="Clip length" aside={draft.durations.length === 0 ? 'Any length' : `${draft.durations.length} selected`}>
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7" role="group" aria-label="Clip length options">
@@ -501,6 +503,7 @@ function ReviewStep({ draft, trim, onEdit }: {
   trim: { start: number | null; end: number | null }
   onEdit: (step: WizardStep) => void
 }): React.JSX.Element {
+  const { codexModel, codexReasoning } = useSettingsStore()
   const active = useActiveJobs()
   const runningCount = active.filter((job) => job.status !== 'queued').length
   const lengths = draft.durations.length === 0
@@ -522,6 +525,7 @@ function ReviewStep({ draft, trim, onEdit }: {
     { step: 'clips', label: 'Clips', value: `${lengths}${(draft.videoSpeed ?? 1) > 1 && draft.durations.length > 0 ? ' of source footage' : ''} · ${draft.autoClipCount ? 'AI decides how many' : `Up to ${draft.maxClips}`}` },
     { step: 'captions', label: 'Captions', value: draft.includeCaptions ? CAPTION_PRESET_NAMES[draft.captionPreset] ?? draft.captionPreset : 'Off' }
   ]
+  if (draft.clippingMode !== 'advanced') rows.splice(5, 0, { step: 'clips', label: 'Codex', value: `${codexModel} / ${codexReasoning}` })
   if (draft.clippingMode === 'advanced' && draft.transcriptionModel) rows.splice(5, 0,
     { step: 'clips', label: 'Transcribe', value: draft.transcriptionModel })
   if (draft.clippingMode === 'advanced' && draft.plannerModel) rows.splice(5, 0,

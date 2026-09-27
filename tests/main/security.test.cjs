@@ -179,6 +179,8 @@ test('the native picker authorizes media and shell opening rejects aliased appli
         dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [video] }) }
       },
       './settings-store': { loadSettings: () => ({ outputDirectory: library }) },
+      './output-libraries': { mediaLibrary: () => library, outputLibraries: () => [library] },
+      './source-cache': {}, './codex-service': {},
       './file-manager': {},
       './run-history': runHistory,
       './pipeline-runner': {},
@@ -230,7 +232,7 @@ test('job validation rejects malformed options and invalid trim intervals', () =
   const advanced = { ...job, clippingMode: 'advanced', plannerModel: 'google/gemini-3.8-flash', transcriptionModel: 'openai/whisper-large-v3' }
   assert.doesNotThrow(() => validateJobConfig(advanced))
   assert.equal(validateJobConfig({ ...advanced, plannerCapabilities: { maxOutputTokens: 1e12 } }).plannerCapabilities, undefined)
-  for (const patch of [{ plannerModel: '' }, { transcriptionModel: undefined }, { plannerModel: 'provider/model,other/model' }, { plannerModel: 'https://example.com' }, { clippingMode: 'quality' }]) {
+  for (const patch of [{ plannerModel: '' }, { transcriptionModel: undefined }, { plannerModel: 'provider/model,other/model' }, { plannerModel: 'https://example.com' }]) {
     assert.throws(() => validateJobConfig({ ...advanced, ...patch }))
   }
   for (const option of jobContract.DURATION_OPTIONS) assert.doesNotThrow(() => validateJobConfig({ ...job, durationRanges: [option.id] }))
@@ -323,7 +325,7 @@ test('Windows resolves the saved legacy Python default without replacing an inst
   const present = new Set()
   let python3Runnable = false
   let saved = null
-  const app = { isPackaged: false, getPath: (name) => name === 'home' ? 'C:\\Users\\Test' : userData }
+  const app = { isPackaged: false, isReady: () => false, getPath: (name) => name === 'home' ? 'C:\\Users\\Test' : userData }
   const store = loadSource('settings-store.ts', {
     electron: { app, safeStorage: {} }, path: path.win32,
     fs: {
