@@ -117,10 +117,10 @@ class TestRequestPayload:
         assert payload["response_format"]["json_schema"]["strict"] is True
         assert payload["provider"] == {"require_parameters": True}
 
-    def test_reasoning_none_sends_temperature_instead(self):
+    def test_reasoning_none_explicitly_disables_thinking(self):
         planner = make_planner(planner_reasoning_effort="none")
         payload = planner._build_request_payload("m", [], [])
-        assert "reasoning" not in payload
+        assert payload["reasoning"] == {"enabled": False}
         assert payload["temperature"] == 0.2
         assert "models" not in payload
 
@@ -358,3 +358,17 @@ def test_planning_output_budget_has_actionable_safe_error():
     message = safe_processing_error(error)
     assert message == "Planning model exhausted its output budget"
     assert safe_job_error_text(message) == message
+
+
+def test_quality_defaults_use_qwen_without_reasoning_and_whisper():
+    from clip_engine.config import Settings
+    settings = Settings(_env_file=None, clipping_mode="quality")
+    assert settings.planner_model == settings.layout_vision_model == "qwen/qwen3.8-flash"
+    assert settings.transcription_model == "openai/whisper-large-v3-turbo"
+    assert settings.layout_vision_enabled
+    assert settings.planner_reasoning_effort == settings.layout_vision_reasoning_effort == "none"
+    assert not settings.planner_fallback_models and not settings.layout_vision_fallback_models
+    planner = make_planner()
+    planner.settings = settings
+    payload = planner._build_request_payload(settings.planner_model, [], [])
+    assert payload["reasoning"] == {"enabled": False}

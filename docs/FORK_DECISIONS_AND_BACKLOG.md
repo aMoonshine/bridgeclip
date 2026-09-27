@@ -359,3 +359,33 @@ by default. Vision now explicitly sends `reasoning: {enabled: false}` with the
 existing 4,000-token output limit; `low` and `exclude` do not disable reasoning.
 No model fallbacks. Request construction is tested offline; actual provider
 compliance and composition quality still require a real visual run.
+
+
+### Final Quality preset and remaining framing evidence (2026-09-27)
+
+Supersedes previous preset notes: Quality = Qwen3.8 Flash planning + Qwen3.8 Flash
+layout vision + Whisper Large V3 Turbo transcription. Both Qwen request paths
+explicitly disable reasoning (`enabled: false`); no planner/vision fallback models.
+Economy still selects GLM 5.3 Flash with Vision disabled. Existing transcript
+cache remains valid across preset changes, so previously paid MAI transcripts
+are reused; new uncached Quality transcription starts with Whisper Turbo.
+
+Image request format matches OpenRouter image-understanding documentation:
+text followed by `image_url` with a JPEG base64 data URL. Run `459d0cc2-dbde-472d-a002-a8af938d404f`
+confirms actual Qwen vision responses with zero reasoning tokens. User examples
+map to clips 2 (242730-283310ms), 4 (1381850-1443970ms) and 8 (910710-949160ms).
+Clip 4 uses one static vision two_shot for its entire 62.42 seconds, with person
+boxes covering almost the entire left/right halves. Clip 8 has a 16.375s speaker
+section followed by a static two_shot. These are evidence for investigating
+scene-cut detection and box tracking, not proof of their exact failure cause.
+
+Current implementation samples at 4 FPS, detects faces locally using OpenCV
+YuNet, groups shots by histogram changes, asks vision about a midpoint keyframe,
+and renders crops. It does not inspect the completed composition. Person boxes
+used by the fork's stacked crop are static within a shot. Talking-head merging
+can retain heuristic face/focus choices even after a vision classification.
+Next framing work should compare source frames, face tracks and crop rectangles
+at the reported timestamps; check cuts, require two concurrent distinct tracks
+for stacked layout, track crop centers over time, and validate face containment
+in the final crop. Evaluate another detector only after measuring YuNet misses.
+No detector replacement or claim of framing repair was made in this preset change.

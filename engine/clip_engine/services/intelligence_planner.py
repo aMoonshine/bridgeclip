@@ -994,7 +994,11 @@ Do not overlap clips by more than 5 seconds."""
         # The payload pins `require_parameters`, so adding a reasoning control
         # here would make a non-reasoning model unroutable rather than bounded.
         if self.settings.clipping_mode != "advanced":
-            apply_reasoning(payload, self.settings.planner_reasoning_effort)
+            if self.settings.planner_reasoning_effort == "none":
+                payload["reasoning"] = {"enabled": False}
+                payload["temperature"] = 0.2
+            else:
+                apply_reasoning(payload, self.settings.planner_reasoning_effort)
         return payload
 
     async def _call_openrouter(

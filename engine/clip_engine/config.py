@@ -642,12 +642,12 @@ class Settings(BaseSettings):
     # AI MODELS (override via env to swap models without a release)
     # ============================================================
 
-    # Quality uses GLM planning and a separate image-capable vision checker.
+    # Quality uses Qwen for planning and a separate image layout request.
     # No automatic fallback to a more expensive model.
-    planner_model: str = "z-ai/glm-5.3-flash"
+    planner_model: str = "qwen/qwen3.8-flash"
     planner_fallback_models: str = ""
     # Keep reasoning modest so output capacity remains available for the plan.
-    planner_reasoning_effort: str = "medium"
+    planner_reasoning_effort: str = "none"
     planner_max_output_tokens: int = 32000
 
     # Layout vision checks one keyframe per distinct visual setup.
@@ -830,7 +830,7 @@ class Settings(BaseSettings):
             if not self.advanced_transcription_model:
                 raise ValueError("Choose a transcription model in Advanced mode")
             return self.advanced_transcription_model
-        return "openai/whisper-large-v3-turbo" if self.clipping_mode == "economy" else "microsoft/mai-transcribe-2"
+        return "openai/whisper-large-v3-turbo"
 
     # OpenRouter / LLM Configuration
     @property
