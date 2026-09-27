@@ -145,3 +145,18 @@ test('a sources folder inside the work root is refused', () => {
     assert.equal(store.loadSettings().sourceCacheDirectory, `${workRoot}-elsewhere`)
   } finally { cleanup() }
 })
+
+
+test('Codex model persists and reaches only the isolated bridge configuration', () => {
+  withStore((store) => {
+    assert.equal(store.publicSettings(store.loadSettings()).codexModel, 'gpt-6-luna')
+    store.savePublicSettings({ codexModel: 'gpt-6-sol' })
+    const settings = store.loadSettings()
+    assert.equal(store.publicSettings(settings).codexModel, 'gpt-6-sol')
+    const env = store.getSettingsForBridge(settings)
+    assert.equal(env.CODEX_MODEL, 'gpt-6-sol')
+    assert.equal(env.ANALYSIS_PROVIDER, 'codex')
+    assert.ok(env.BRIDGECLIP_CODEX_HOME.endsWith('codex'))
+    assert.throws(() => store.savePublicSettings({ codexModel: 'bad\nmodel' }))
+  })
+})

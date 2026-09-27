@@ -19,10 +19,11 @@ export interface AppSettings {
   downloadResolution: 'source' | '2160' | '1440' | '1080' | '720'
   renderConcurrency: number
   sourceCacheDirectory: string
+  codexModel: string
 }
 
 export type ApiKeyName = 'openrouterApiKey' | 'zernioApiKey'
-export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory'> & {
+export type PublicSettings = Pick<AppSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory' | 'codexModel'> & {
   openrouterConfigured: boolean
   zernioConfigured: boolean
 }
@@ -36,12 +37,13 @@ const DEFAULT_SOURCE_CACHE_BUDGET_BYTES = 20 * 1000 ** 3
 const DEFAULT_SETTINGS: AppSettings = {
   openrouterApiKey: '',
   zernioApiKey: '',
-  outputDirectory: join(app.getPath('home'), 'BridgeClip'),
-  pythonPath: process.platform === 'win32' ? 'python' : 'python3',
+  outputDirectory: join(app.getPath('home'), 'BridgeClip Codex'),
+  pythonPath: process.env.BRIDGECLIP_PYTHON || (process.platform === 'win32' ? 'python' : 'python3'),
   customVocabulary: '',
   downloadResolution: 'source',
   renderConcurrency: 0,
-  sourceCacheDirectory: join(app.getPath('userData'), 'sources')
+  sourceCacheDirectory: join(app.getPath('userData'), 'sources'),
+  codexModel: 'gpt-6-luna'
 }
 
 const SETTINGS_VERSION = 8
@@ -58,6 +60,7 @@ interface PersistedSettings {
   downloadResolution?: string
   renderConcurrency?: number
   sourceCacheDirectory?: string
+  codexModel?: string
 }
 
 function ensureDir(dir: string): string {
@@ -113,8 +116,10 @@ function normalizeSettings(settings: Partial<AppSettings>): AppSettings {
     downloadResolution: (DOWNLOAD_RESOLUTIONS as readonly string[]).includes(settings.downloadResolution ?? '')
       ? settings.downloadResolution as AppSettings['downloadResolution'] : DEFAULT_SETTINGS.downloadResolution,
     renderConcurrency: normalizeConcurrency(settings.renderConcurrency),
-    sourceCacheDirectory: normalizeCacheDirectory(settings.sourceCacheDirectory ?? DEFAULT_SETTINGS.sourceCacheDirectory)
+    sourceCacheDirectory: normalizeCacheDirectory(settings.sourceCacheDirectory ?? DEFAULT_SETTINGS.sourceCacheDirectory),
+    codexModel: settings.codexModel?.trim() || DEFAULT_SETTINGS.codexModel
   }
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(normalized.codexModel)) throw new Error("Invalid Codex model")
   normalized.outputDirectory ||= DEFAULT_SETTINGS.outputDirectory
   normalized.pythonPath ||= DEFAULT_SETTINGS.pythonPath
   if (!isAbsolute(normalized.outputDirectory)) throw new Error('Settings folders must be absolute paths')
@@ -189,6 +194,7 @@ export function loadSettings(): AppSettings {
       customVocabulary: typeof raw.customVocabulary === 'string' ? raw.customVocabulary : DEFAULT_SETTINGS.customVocabulary,
       downloadResolution: typeof raw.downloadResolution === 'string' ? raw.downloadResolution : DEFAULT_SETTINGS.downloadResolution,
       renderConcurrency: typeof raw.renderConcurrency === 'number' ? raw.renderConcurrency : DEFAULT_SETTINGS.renderConcurrency,
+      codexModel: typeof raw.codexModel === "string" ? raw.codexModel : DEFAULT_SETTINGS.codexModel,
       sourceCacheDirectory: typeof raw.sourceCacheDirectory === 'string' ? raw.sourceCacheDirectory : DEFAULT_SETTINGS.sourceCacheDirectory
     })
 
@@ -212,6 +218,7 @@ function writeSettings(settings: AppSettings): void {
     customVocabulary: settings.customVocabulary,
     downloadResolution: settings.downloadResolution,
     renderConcurrency: settings.renderConcurrency,
+    codexModel: settings.codexModel,
     sourceCacheDirectory: settings.sourceCacheDirectory
   }
 
@@ -242,13 +249,14 @@ export function publicSettings(settings: AppSettings): PublicSettings {
     customVocabulary: settings.customVocabulary,
     downloadResolution: settings.downloadResolution,
     renderConcurrency: settings.renderConcurrency,
+    codexModel: settings.codexModel,
     sourceCacheDirectory: settings.sourceCacheDirectory,
     openrouterConfigured: Boolean(settings.openrouterApiKey),
     zernioConfigured: Boolean(settings.zernioApiKey)
   }
 }
 
-export type PublicSettingsUpdate = Partial<Pick<PublicSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory'>>
+export type PublicSettingsUpdate = Partial<Pick<PublicSettings, 'outputDirectory' | 'pythonPath' | 'customVocabulary' | 'downloadResolution' | 'renderConcurrency' | 'sourceCacheDirectory' | 'codexModel'>>
 
 export function savePublicSettings(update: PublicSettingsUpdate): PublicSettings {
   const current = loadSettings()
@@ -259,6 +267,7 @@ export function savePublicSettings(update: PublicSettingsUpdate): PublicSettings
     customVocabulary: update.customVocabulary ?? current.customVocabulary,
     downloadResolution: update.downloadResolution ?? current.downloadResolution,
     renderConcurrency: update.renderConcurrency ?? current.renderConcurrency,
+    codexModel: update.codexModel ?? current.codexModel,
     sourceCacheDirectory: update.sourceCacheDirectory ?? current.sourceCacheDirectory
   }))
 }
@@ -291,6 +300,10 @@ export function replaceApiKey(key: ApiKeyName, value: string): PublicSettings {
 
 export function getSettingsForBridge(settings: AppSettings): Record<string, string> {
   return {
+    ANALYSIS_PROVIDER: "codex",
+    CODEX_MODEL: settings.codexModel,
+    BRIDGECLIP_CODEX_HOME: join(app.getPath("userData"), "codex"),
+    ...(process.env.BRIDGECLIP_CODEX_PATH ? { BRIDGECLIP_CODEX_PATH: process.env.BRIDGECLIP_CODEX_PATH } : {}),
     OPENROUTER_API_KEY: settings.openrouterApiKey,
     LOCAL_MODE: 'true',
     LOCAL_OUTPUT_DIR: settings.outputDirectory,

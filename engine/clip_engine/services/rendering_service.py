@@ -468,6 +468,9 @@ class RenderingService:
                 request.video_path, window_start_ms, window_ms, source_w, source_h, request.layout_style,
             )
         except Exception as e:
+            from clip_engine.services.codex_provider import CodexError
+            if isinstance(e, CodexError):
+                raise
             logger.warning(f"Layout analysis failed, falling back to letterbox: {e}", exc_info=True)
             return None
 

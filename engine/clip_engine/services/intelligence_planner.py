@@ -229,7 +229,7 @@ class IntelligencePlannerService:
         self.settings = get_settings()
         self._http_client: Optional[httpx.AsyncClient] = None
         
-        if not self.settings.openrouter_api_key:
+        if not self.settings.openrouter_api_key and self.settings.analysis_provider != "codex":
             logger.warning("OPENROUTER_API_KEY not set, intelligence planning will fail")
 
     def calculate_optimal_clip_count(
@@ -628,7 +628,7 @@ class IntelligencePlannerService:
             result.segments = self._finalize_clips(result.segments, clip_count)
             result.total_clips = len(result.segments)
             result.api_costs = PlanningApiCosts(
-                provider="openrouter",
+                provider=self.settings.analysis_provider,
                 model=served_by,
                 prompt_tokens=cumulative_prompt_tokens,
                 completion_tokens=cumulative_completion_tokens,
@@ -1013,6 +1013,12 @@ Do not overlap clips by more than 5 seconds."""
             IntelligencePlanningError: with `retryable=True` for rate limits,
             provider outages and network failures.
         """
+        if self.settings.analysis_provider == "codex":
+            from clip_engine.services.codex_provider import completion, CodexError
+            try:
+                return await completion(messages, clip_plan_schema(getattr(self, "_current_longform", False)), self.settings.codex_model)
+            except CodexError as e:
+                raise IntelligencePlanningError(str(e), retryable=False, reason="codex") from e
         client = await self._get_client()
         payload = self._build_request_payload(model, fallback_models or [], messages)
         try:

@@ -437,3 +437,13 @@ bridge. Subscription-based file transcription with word timestamps was not
 confirmed; retain cached Whisper until such a path is verified.
 Sources: https://learn.chatgpt.com/docs/app-server and
 https://learn.chatgpt.com/docs/auth (checked 2026-09-27).
+
+
+## Parallel Codex app ? 2026-09-27
+
+User authorized a separate app to test subscription-based Codex planning and
+Vision while testing the existing OpenRouter version. Implemented on
+`codex/codex-provider` in its own checkout, with separate app identity and state.
+See [CODEX_APP.md](CODEX_APP.md) for launch, model routes, verification and limits.
+Whisper transcription and the existing source/transcript cache remain in use.
+The experimental app does not replace the original dynamic-framing checkout.

@@ -61,8 +61,8 @@ export function buildJobRequest(draft: ClipDraft, trim: { start: number | null; 
   return {
     videoUrl: normalizeVideoSource(draft.source),
     clippingMode: draft.clippingMode,
-    ...(draft.plannerModel ? { plannerModel: draft.plannerModel } : {}),
-    ...(draft.transcriptionModel ? { transcriptionModel: draft.transcriptionModel } : {}),
+    ...(draft.clippingMode === 'advanced' && draft.plannerModel ? { plannerModel: draft.plannerModel } : {}),
+    ...(draft.clippingMode === 'advanced' && draft.transcriptionModel ? { transcriptionModel: draft.transcriptionModel } : {}),
     maxClips: draft.autoClipCount ? null : draft.maxClips,
     autoClipCount: draft.autoClipCount,
     durationRanges: draft.durations.length > 0 ? draft.durations : null,
@@ -394,8 +394,8 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
       <Group label="Clipping mode">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Clipping mode">
           {([
-            { id: 'quality', label: 'Quality', hint: 'Qwen3.8 Flash planning + vision · Whisper Turbo' },
-            { id: 'economy', label: 'Economy', hint: 'GLM 5.3 Flash planning · Whisper Turbo' },
+            { id: 'quality', label: 'Quality', hint: 'Codex planning + vision · Whisper Turbo' },
+            { id: 'economy', label: 'Economy', hint: 'Codex planning without vision · Whisper Turbo' },
             { id: 'advanced', label: 'Advanced', hint: 'Choose your OpenRouter models' }
           ] as const).map((mode) => {
             const selected = draft.clippingMode === mode.id
@@ -407,8 +407,8 @@ export function ClipsStep({ draft, update }: { draft: ClipDraft; update: Update 
             </button>
           })}
         </div>
-        <AdvancedModels draft={draft} update={update} required={draft.clippingMode === 'advanced'} />
-        {draft.clippingMode !== 'advanced' && <p className="mt-2 text-2xs text-ink-subtle">Leave either choice empty to use the {draft.clippingMode === 'economy' ? 'lower-cost' : 'quality'} preset. A custom choice is used as selected without switching models.</p>}
+        {draft.clippingMode === 'advanced' && <AdvancedModels draft={draft} update={update} required />}
+        {draft.clippingMode !== 'advanced' && <p className="mt-2 text-2xs text-ink-subtle">Uses the Codex model selected in Settings and cached Whisper transcription. Codex subscription limits apply.</p>}
       </Group>
       <Group label="Clip length" aside={draft.durations.length === 0 ? 'Any length' : `${draft.durations.length} selected`}>
         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7" role="group" aria-label="Clip length options">
@@ -522,9 +522,9 @@ function ReviewStep({ draft, trim, onEdit }: {
     { step: 'clips', label: 'Clips', value: `${lengths}${(draft.videoSpeed ?? 1) > 1 && draft.durations.length > 0 ? ' of source footage' : ''} · ${draft.autoClipCount ? 'AI decides how many' : `Up to ${draft.maxClips}`}` },
     { step: 'captions', label: 'Captions', value: draft.includeCaptions ? CAPTION_PRESET_NAMES[draft.captionPreset] ?? draft.captionPreset : 'Off' }
   ]
-  if (draft.transcriptionModel) rows.splice(5, 0,
+  if (draft.clippingMode === 'advanced' && draft.transcriptionModel) rows.splice(5, 0,
     { step: 'clips', label: 'Transcribe', value: draft.transcriptionModel })
-  if (draft.plannerModel) rows.splice(5, 0,
+  if (draft.clippingMode === 'advanced' && draft.plannerModel) rows.splice(5, 0,
     { step: 'clips', label: 'Plan', value: draft.plannerModel })
 
   return (

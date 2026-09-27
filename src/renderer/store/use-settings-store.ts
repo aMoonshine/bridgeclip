@@ -34,6 +34,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   downloadResolution: 'source',
   renderConcurrency: 0,
   sourceCacheDirectory: '',
+  codexModel: 'gpt-6-luna',
   loaded: false,
   saving: false,
   toolStatus: null,
@@ -121,6 +122,7 @@ function pickSettings(s: ClipSettings): ClipSettings {
     customVocabulary: s.customVocabulary,
     downloadResolution: s.downloadResolution,
     renderConcurrency: s.renderConcurrency,
+    codexModel: s.codexModel,
     sourceCacheDirectory: s.sourceCacheDirectory
   }
 }

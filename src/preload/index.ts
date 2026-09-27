@@ -1,3 +1,4 @@
+import type { CodexStatus } from '../shared/codex'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   ZernioConnectOptions,
@@ -25,6 +26,7 @@ export interface ClipSettings {
   downloadResolution: 'source' | '2160' | '1440' | '1080' | '720'
   renderConcurrency: number
   sourceCacheDirectory: string
+  codexModel: string
 }
 
 export type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
@@ -58,6 +60,7 @@ export interface ToolStatus {
 }
 
 export interface BridgeClipAPI {
+  codex: { status: () => Promise<CodexStatus>; login: () => Promise<CodexStatus> }
   models: { list: (refresh?: boolean) => Promise<OpenRouterCatalog> }
   automations: {
     list: () => Promise<Automation[]>
@@ -180,6 +183,7 @@ function subscribe<T>(channel: string, callback: (data: T) => void): () => void 
 }
 
 const api: BridgeClipAPI = {
+  codex: { status: () => ipcRenderer.invoke('codex:status'), login: () => ipcRenderer.invoke('codex:login') },
   models: { list: (refresh = false) => ipcRenderer.invoke('models:list', refresh) },
   automations: {
     list: () => ipcRenderer.invoke('automations:list'),

@@ -973,7 +973,7 @@ class LayoutAnalyzer:
     # -- vision ---------------------------------------------------------------
 
     def _vision_enabled(self) -> bool:
-        return bool(self.settings.layout_vision_enabled and self.settings.openrouter_api_key)
+        return bool(self.settings.layout_vision_enabled and (self.settings.analysis_provider == "codex" or self.settings.openrouter_api_key))
 
     async def _vision_classify(
         self, keyframe: bytes, shot_frames: list[FrameInfo], heuristic: ShotLayout,
@@ -1016,6 +1016,15 @@ class LayoutAnalyzer:
             payload["temperature"] = 0.0
         else:
             apply_reasoning(payload, self.settings.layout_vision_reasoning_effort, temperature=0.0)
+
+        if self.settings.analysis_provider == "codex":
+            from clip_engine.services.codex_provider import completion
+            # Surface a subscription/auth failure instead of silently losing Quality vision.
+            body, usage = await completion(payload["messages"], VISION_SCHEMA, self.settings.codex_model)
+            content, _ = message_text(body)
+            result = json.loads(content or "")
+            self._vision_cache.append((hist, signature, result))
+            return result, 0.0
 
         client = await self._get_client()
         for attempt in range(2):

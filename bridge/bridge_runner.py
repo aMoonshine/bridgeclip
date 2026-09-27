@@ -36,6 +36,9 @@ DURATION_RANGE_IDS = ("xshort", "short", "medium", "long", "xlong", "extended", 
 # request URLs, proxy credentials and local paths, so only these fixed strings
 # reach the UI. First match wins.
 FAILURES = (
+    (("codex analysis unavailable",),
+     "Codex could not complete the analysis.",
+     "Open Settings, check the Codex connection and selected model, and check your subscription limits. Then retry; cached transcripts are reused."),
     (("planning model exhausted its output budget",),
      "The planning model used its output limit without returning a clip plan.",
      "Choose another planning model. Saved transcripts are reused automatically when the source and transcription options match."),
@@ -198,6 +201,14 @@ async def run(config: dict) -> bool:
         os.environ["PLANNER_REASONING_EFFORT"] = "medium"
         os.environ["PLANNER_FALLBACK_MODELS"] = ""
         os.environ["LAYOUT_VISION_ENABLED"] = "false"
+
+    if os.environ.get("ANALYSIS_PROVIDER") == "codex" and config.get("clipping_mode") != "advanced":
+        os.environ["PLANNER_MODEL"] = os.environ.get("CODEX_MODEL", "gpt-6-luna")
+        os.environ["PLANNER_FALLBACK_MODELS"] = ""
+        os.environ["PLANNER_SUPPORTS_IMAGES"] = "true"
+        os.environ["LAYOUT_VISION_MODEL"] = os.environ["PLANNER_MODEL"]
+    else:
+        os.environ["ANALYSIS_PROVIDER"] = "openrouter"
 
     from network_guard import install as install_network_guard
     install_network_guard()

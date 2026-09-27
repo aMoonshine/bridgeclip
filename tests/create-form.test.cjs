@@ -151,7 +151,7 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
   }
 })
 
-  test('a chosen model travels with the job in every mode', () => {
+  test('OpenRouter model overrides apply only to Advanced in the Codex app', () => {
     const { ClipsStep, buildJobRequest } = form.exports
     const draft = {
       source: 'https://example.com/video', clippingMode: 'advanced',
@@ -168,17 +168,15 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
     assert.equal(request.transcriptionModel, 'provider/speech')
     assert.equal(request.layoutVision, true)
 
-    // The presets used to drop these fields, which is what made model selection
-    // look unavailable outside Advanced. A choice now applies in every mode, and
-    // the pickers are on screen there too.
+    // Codex presets must ignore stale OpenRouter overrides from saved drafts.
     for (const clippingMode of ['quality', 'economy']) {
       const preset = buildJobRequest({ ...draft, clippingMode }, { start: null, end: null })
-      assert.equal(preset.plannerModel, 'provider/planning', clippingMode)
-      assert.equal(preset.transcriptionModel, 'provider/speech', clippingMode)
+      assert.equal(preset.plannerModel, undefined, clippingMode)
+      assert.equal(preset.transcriptionModel, undefined, clippingMode)
       const presetHtml = renderToStaticMarkup(
         React.createElement(ClipsStep, { draft: { ...draft, clippingMode }, update() {} })
       )
-      assert.equal((presetHtml.match(/role="combobox"/g) ?? []).length, 2, clippingMode)
+      assert.equal((presetHtml.match(/role="combobox"/g) ?? []).length, 0, clippingMode)
     }
   })
 
@@ -194,7 +192,7 @@ test('saved run speed is retained while invalid speed metadata is discarded', ()
     assert.equal(request.transcriptionModel, undefined)
     assert.equal(request.plannerModel, undefined)
     const html = renderToStaticMarkup(React.createElement(ClipsStep, { draft, update() {} }))
-    assert.match(html, /Optional model overrides/)
+    assert.match(html, /Codex model selected in Settings/)
   })
 
 

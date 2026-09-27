@@ -1,3 +1,5 @@
+import './app-identity'
+import { stopCodexConnection } from './codex-service'
 import { app, BrowserWindow, nativeTheme, shell, protocol } from 'electron'
 import { extname, join } from 'path'
 import { mkdirSync } from 'fs'
@@ -82,7 +84,7 @@ function createWindow(): void {
     minWidth: 720,
     minHeight: 520,
     show: false,
-    title: 'BridgeClip',
+    title: 'BridgeClip Codex',
     icon: is.dev ? devIcon : undefined,
     // macOS-only window chrome: 'hiddenInset' and trafficLightPosition are
     // ignored on other platforms, so only pass them on darwin.
@@ -140,7 +142,7 @@ protocol.registerSchemesAsPrivileged([
 
 app.whenReady().then(() => {
   cleanStaleWorkspaces()
-  electronApp.setAppUserModelId('com.bridgemind.bridgeclip')
+  electronApp.setAppUserModelId('com.bridgemind.bridgeclip.codex')
   if (hiddenForTests) app.dock?.hide()
   else if (is.dev) app.dock?.setIcon(devIcon)
 
@@ -239,6 +241,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  stopCodexConnection()
   cancelQueuedJobsForQuit()
   stopAllJobsForQuit()
 })

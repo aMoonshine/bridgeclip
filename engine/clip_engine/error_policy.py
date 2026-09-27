@@ -33,6 +33,8 @@ def is_disk_full(error: BaseException) -> bool:
 
 def safe_processing_error(error: Exception) -> str:
     """Classify an internal exception for API responses and webhooks."""
+    if type(error).__name__ == "CodexError" or getattr(error, "reason", None) == "codex":
+        return "Codex analysis unavailable"
     if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "reason", None) == "output_budget":
         return "Planning model exhausted its output budget"
     if is_disk_full(error):
@@ -80,6 +82,8 @@ def safe_processing_error(error: Exception) -> str:
 
 def safe_failure_code(error: Exception) -> str:
     """Small fixed code suitable for job records and logs; never include raw provider text."""
+    if type(error).__name__ == "CodexError" or getattr(error, "reason", None) == "codex":
+        return "codex.unavailable"
     if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "reason", None) == "output_budget":
         return "planning.output_budget"
     if is_disk_full(error):
@@ -116,7 +120,7 @@ def safe_job_error_text(error: str | None) -> str | None:
     if error in TWITCH_ERRORS.values():
         return error
     if error in {
-        "Processing timed out", "Video download failed", "No clip-worthy moments found",
+        "Codex analysis unavailable", "Processing timed out", "Video download failed", "No clip-worthy moments found",
         "Selected planner requires a video with speech", "Planning model unavailable",
         "Planning provider rate limit reached", "Planning model exhausted its output budget",
         "Processing failed", "Job cancelled", "Transcription authentication failed",

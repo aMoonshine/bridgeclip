@@ -18,6 +18,7 @@ import { IconTile } from '../components/ui/IconTile'
 import { Callout } from '../components/ui/Callout'
 import { UpdatesRow } from '../components/Updates'
 import { VideoSettings } from '../components/VideoSettings'
+import { CodexSettings } from '../components/CodexSettings'
 import { SourceCacheSettings } from '../components/SourceCacheSettings'
 
 type SectionId = 'keys' | 'video' | 'vocabulary' | 'output' | 'system' | 'about'
@@ -74,7 +75,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
   }, [showUpdates])
 
   const checks: { label: string; ok: boolean | null; detail: string; section: SectionId; optional?: boolean; tone?: 'danger' }[] = [
-    { label: 'OpenRouter', ok: openrouterConfigured, detail: openrouterConfigured ? 'Key saved' : 'Needed to transcribe and pick clips', section: 'keys' },
+    { label: 'OpenRouter', ok: openrouterConfigured, detail: openrouterConfigured ? 'Key saved' : 'Needed for Whisper transcription', section: 'keys' },
     { label: 'Tools', ok: toolsChecked ? toolsMissing === 0 : null, detail: !toolsChecked ? (checkingTools ? 'Checking…' : 'Not checked') : toolsMissing ? `${toolsMissing} missing` : 'All installed', section: 'system', tone: 'danger' },
     { label: 'Zernio', ok: zernioConfigured, detail: zernioConfigured ? 'Posting on' : 'Optional, for posting', section: 'keys', optional: true }
   ]
@@ -116,7 +117,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
                 <IconTile tone={blocking ? 'warning' : 'success'} size="lg">{blocking ? <KeyRound /> : <Check strokeWidth={3} />}</IconTile>
                 <div>
                   <h2 className="text-sm font-semibold text-ink">{blocking ? `${blocking} thing${blocking === 1 ? '' : 's'} to set up before clipping` : 'Ready to clip'}</h2>
-                  <p className="mt-0.5 text-xs text-ink-muted">{APP_NAME} runs on this computer. One OpenRouter key covers transcription and clip selection.</p>
+                  <p className="mt-0.5 text-xs text-ink-muted">{APP_NAME} runs on this computer. Codex plans clips and checks frames. OpenRouter transcribes audio.</p>
                 </div>
               </div>
             </div>
@@ -138,6 +139,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
             </div>
           </Panel>
 
+          <CodexSettings />
           <Section id="keys">
             <PanelHeader
               icon={<IconTile tone="accent"><KeyRound /></IconTile>}
@@ -154,7 +156,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
                   onRemove={() => void keys.remove('openrouterApiKey')}
                   onBlur={() => void keys.persist()}
                   placeholder="sk-or-…"
-                  description="Transcribes with MAI Transcribe 2 and picks the moments worth clipping."
+                  description="Whisper Turbo transcription. Also used for Advanced mode."
                   getKeyUrl={PROVIDER_LINKS.openrouter}
                 />
               </KeyRow>

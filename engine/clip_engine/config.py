@@ -592,6 +592,8 @@ class Settings(BaseSettings):
 
     # API Keys (required)
     openrouter_api_key: Optional[str] = None
+    analysis_provider: str = "openrouter"
+    codex_model: str = "gpt-6-luna"
 
     # Security - API authentication
     bridgeclip_api_key: Optional[str] = None  # API key for authenticating incoming requests

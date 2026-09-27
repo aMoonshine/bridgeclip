@@ -18,6 +18,7 @@ import { assertPublicWebUrl } from './network-policy'
 import { validateJobConfig } from './validation'
 import { getModelCatalog, resolveAdvancedModels, resolveModel } from './openrouter-models'
 import { deleteCachedSource, readSourceCache } from './source-cache'
+import { checkCodex } from './codex-service'
 import { randomUUID } from 'crypto'
 import { resolveBinary, supportsCaptionFilter } from './tools'
 import { approveAutomationTikTokReview, prepareAutomationTikTokReview, addAutomationContent, addLibraryClipsToAutomation, createAutomation, deleteAutomation, isAutomationMedia, listAutomations, removeAutomationContent, runAutomation, updateAutomation, updateAutomationContent } from './automations'
@@ -58,6 +59,8 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     assertTrustedSender(event, getMainWindow())
     return listener(event, ...args)
   })
+  handle('codex:status', () => checkCodex())
+  handle('codex:login', () => checkCodex(true))
   handle('settings:load', () => {
     return publicSettings(loadSettings())
   })
@@ -164,7 +167,13 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     try {
       config = validateJobConfig(config)
       if (config.clippingMode === 'advanced') config.plannerCapabilities = await resolveAdvancedModels(config.plannerModel!, config.transcriptionModel!)
-      else if (config.plannerModel) config.plannerCapabilities = await resolveModel('planning', config.plannerModel)
+      else {
+        delete config.plannerModel; delete config.transcriptionModel
+        const codex = await checkCodex()
+        if (!codex.connected) throw new Error('Sign in to ChatGPT in Settings before starting a Codex run.')
+        const model = codex.models.find(m => m.id === loadSettings().codexModel)
+        if (!model || !model.vision) throw new Error('Choose an available Codex model with image support in Settings.')
+      }
       if (config.clippingMode !== 'advanced' && config.transcriptionModel) await resolveModel('transcription', config.transcriptionModel)
       if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl)
       else assertMediaPath(config.videoUrl, loadSettings().outputDirectory)
