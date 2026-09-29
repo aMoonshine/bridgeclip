@@ -421,7 +421,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       check(resolveBinary('ffmpeg'), '-version'),
       supportsCaptionFilter(),
       check(resolveBinary('ffprobe'), '-version'),
-      check(resolveBinary('yt-dlp'))
+      execFileAsync(resolvedPython, ['-m', 'yt_dlp', '--version'], { timeout: 5000 }).then(() => true, () => false)
     ])
 
     const result = {
