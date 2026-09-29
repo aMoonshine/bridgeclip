@@ -81,3 +81,18 @@ def test_youtube_auth_failure_survives_safe_error_mapping(monkeypatch):
     assert text == "YouTube session needs verification"
     assert safe_job_error_text(text) == text
     assert "PRIVATE_PROVIDER_DETAIL" not in text
+
+
+def test_august_ytdlp_embedded_client_receives_upstream_hls_fix(monkeypatch):
+    from clip_engine.services.youtube_session import extraction_options
+    from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
+    import yt_dlp.version
+    client = INNERTUBE_CLIENTS["web_embedded"]["INNERTUBE_CONTEXT"]["client"]
+    monkeypatch.setattr(yt_dlp.version, "__version__", "2026.08.19")
+    monkeypatch.setitem(client, "userAgent", "test-original")
+    del client["userAgent"]
+    extraction_options()
+    assert "Safari/605.1.15" in client["userAgent"]
+    monkeypatch.setitem(client, "userAgent", "future-upstream-agent")
+    extraction_options()
+    assert client["userAgent"] == "future-upstream-agent"

@@ -22,6 +22,15 @@ def session_data():
 
 def extraction_options():
     """Use the bundled Node runtime and cookie-capable YouTube clients."""
+    # Backport yt-dlp #17684 (2026-09-16) until a stable release contains it.
+    # WEB_EMBEDDED_PLAYER needs Safari UA to receive HLS 91-96 instead of
+    # only progressive format 18 (360p) on affected YouTube sessions.
+    # https://github.com/yt-dlp/yt-dlp/pull/17684
+    import yt_dlp.version
+    if yt_dlp.version.__version__ == "2026.08.19":
+        from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
+        client = INNERTUBE_CLIENTS["web_embedded"]["INNERTUBE_CONTEXT"]["client"]
+        client.setdefault("userAgent", INNERTUBE_CLIENTS["web_safari"]["INNERTUBE_CONTEXT"]["client"]["userAgent"])
     options = {}
     node = shutil.which("node")
     if node:
