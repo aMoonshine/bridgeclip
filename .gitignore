@@ -27,3 +27,12 @@ engine/.venv/
 __pycache__/
 .pytest_cache/
 *.py[cod]
+
+# Local authentication and cookie exports
+*.enc
+cookies.txt
+cookies.json
+*cookies*.txt
+*cookies*.json
+auth.json
+.codex-home/

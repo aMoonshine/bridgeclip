@@ -1,3 +1,4 @@
+import type { ClipJobRequest } from '../../shared/jobs'
 import { create } from 'zustand'
 import { isModelId } from '../../shared/openrouter-models'
 
@@ -40,6 +41,7 @@ export interface ClipDraft {
 }
 
 interface DraftState extends ClipDraft {
+  loadRequest: (request: ClipJobRequest) => void
   step: WizardStep
   started: StartedJob | null
   update: (patch: Partial<ClipDraft>) => void
@@ -139,6 +141,17 @@ export const useDraftStore = create<DraftState>((set) => ({
       // editing the form.
     }
     return applied
+  }),
+  loadRequest: (r) => set({
+    source: r.videoUrl, clippingMode: r.clippingMode ?? 'quality',
+    plannerModel: r.plannerModel ?? '', transcriptionModel: r.transcriptionModel ?? '',
+    aspectRatio: r.aspectRatio as ClipDraft['aspectRatio'], layoutStyle: r.layoutStyle as ClipDraft['layoutStyle'],
+    layoutVision: r.layoutVision, pacing: r.pacing as ClipDraft['pacing'], videoSpeed: r.videoSpeed ?? 1,
+    durations: [...(r.durationRanges ?? [])], autoClipCount: r.autoClipCount, maxClips: r.maxClips ?? 5,
+    includeCaptions: r.includeCaptions, captionPreset: r.captionPreset,
+    trimOpen: r.startTimeSeconds != null || r.endTimeSeconds != null,
+    trimStart: r.startTimeSeconds == null ? '' : String(r.startTimeSeconds),
+    trimEnd: r.endTimeSeconds == null ? '' : String(r.endTimeSeconds), step: 'video', started: null
   }),
   setStep: (step) => set({ step }),
   clearSource: () => set({ source: '', trimStart: '', trimEnd: '' }),

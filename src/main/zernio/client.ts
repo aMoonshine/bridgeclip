@@ -334,6 +334,10 @@ export class ZernioClient {
       logger.warn('zernio.request.failed', { ...context, status: 0, category: 'network', durationMs: Date.now() - startedAt })
       throw new ZernioApiError('Could not reach Zernio. Check your internet connection and try again.', 0, 'network_error')
     }
+    if (response.status === 403 && /text\/html/i.test(response.headers.get('content-type') ?? '') && /Vercel Security Checkpoint/i.test(raw)) {
+      logger.warn('zernio.request.failed', { ...context, status: 403, category: 'security_checkpoint', durationMs: Date.now() - startedAt })
+      throw new ZernioApiError('Zernio returned a Vercel browser security check instead of an API response (HTTP 403). This does not establish whether your key is valid. Retry on a trusted connection or ask Zernio support to allow API access from your network.', 403, 'security_checkpoint')
+    }
     noteRateLimit(response.headers)
     const parsed = raw ? safeJson(raw) : {}
     if (!response.ok) {

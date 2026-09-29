@@ -1,3 +1,4 @@
+import { savedYouTubeSession } from './youtube-session'
 import { ChildProcess, spawn, execFile, execFileSync } from 'child_process'
 import { app } from 'electron'
 import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, rmSync, writeSync } from 'fs'
@@ -424,9 +425,20 @@ export function startClipJob(
     return
   }
 
+  let youtubeSession: string | undefined
+  try {
+    const host = config.videoUrl.startsWith('https://') || config.videoUrl.startsWith('http://') ? new URL(config.videoUrl).hostname : ''
+    if (host === 'youtu.be' || host === 'youtube.com' || host.endsWith('.youtube.com')) youtubeSession = savedYouTubeSession()
+  }
+  catch {
+    reportError({ jobId, message: 'Could not read the saved YouTube session. Import your YouTube cookies again and retry.' })
+    exitWithoutProcess()
+    return
+  }
   const spawnEnv: Record<string, string | undefined> = {
     ...runtimeEnvironment(),
     ...envVars,
+    BRIDGECLIP_YOUTUBE_SESSION: youtubeSession,
     PYTHONPATH: enginePath,
     BRIDGECLIP_WORK_ROOT: jobWorkRoot,
     PYTHONUNBUFFERED: '1',

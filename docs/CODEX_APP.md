@@ -16,9 +16,9 @@ Run `start-codex-windows.cmd`. It builds the UI and opens a separate Electron ap
   encrypted by the original Chromium profile cannot simply be copied to this
   one. The original profile and keys are never rewritten.
 - A fresh app copies non-secret settings once, with a separate output folder.
-  Existing Codex file authentication is seeded into a dedicated Codex profile
-  once when available; otherwise Sign in with ChatGPT opens Codex's official
-  browser login. No Codex credentials are returned to the renderer.
+  Use Update sign-in from Codex to copy local file authentication into the
+  dedicated BridgeClip profile without any network call. Sign in with ChatGPT
+  opens the official browser login when a fresh session is needed. No Codex credentials are returned to the renderer.
 
 The original `Y:\ProjectsAI\bridgeclip` checkout remains on
 `codex/dynamic-framing`. Both apps can run concurrently, with separate work
@@ -164,6 +164,7 @@ is the tested framing baseline, preserved as `codex-framing-2026-09-27`.
 The independent checkout remains `Y:\ProjectsAI\bridgeclip-codex`, on
 `codex/codex-provider`; the launcher and separate profile remain the entry points.
 
+Historical behavior (2026-09-27; superseded by manual controls below):
 The reported repeated login was reproduced as an interface/control-flow bug:
 Settings did not check saved login on mount, and the login action always started
 OAuth even for an authenticated account. Three fresh real App Server processes
@@ -179,3 +180,98 @@ Upstream updates use the process in FORK_DECISIONS_AND_BACKLOG.md section 2:
 snapshot the accepted overlay, fetch upstream, rebase on a candidate branch,
 resolve conflicts, test the app-specific seams, then adopt the tested candidate.
 Do not rewrite the working checkout while a clip job is using its engine files.
+
+## Manual connection controls (2026-09-28)
+
+Opening the app or its Codex settings no longer starts a Codex process or
+checks the account. There is no startup credential import.
+
+- **Update sign-in from Codex** reads `CODEX_HOME/auth.json` (default
+  `~/.codex/auth.json`) locally, validates that ChatGPT tokens exist, then
+  atomically replaces the dedicated profile's auth file. No remote validation
+  or token refresh occurs. Missing/invalid input leaves the previous file intact.
+  Keyring-only sign-ins require the browser sign-in action instead.
+- **Check connection** explicitly contacts Codex and loads account/model status.
+- **Sign in with ChatGPT** remains available after connection errors and starts
+  browser login without first querying the potentially broken old account.
+
+Import and login are blocked while clipping jobs are active. Starting a run
+checks only for the local auth file; the normal model calls connect as needed
+(and may refresh expired tokens). The provider validates model and reasoning
+when used. Saved model/effort remain visible before a manual check.
+
+Validation: isolated Electron regression covers opening/reopening settings,
+manual status, local credential import, rejected status and malformed input;
+Python fake-server tests cover status reuse and explicit sign-in recovery.
+No real account/network check was performed for this change.
+
+## Network access and local credentials (2026-09-28)
+
+Codex has no boot-time process or status request. Explicit Check connection,
+browser sign-in, and starting a clipping job may start Codex. Updating saved
+sign-in data only reads/writes local files. The job manager does not restore
+and automatically start old jobs at boot.
+
+Provider keys resolve in this order: a nonempty saved key, a process environment
+variable, then the development checkout's .env (packaged builds use userData/.env).
+Only OPENROUTER_API_KEY and ZERNIO_API_KEY are read. The renderer receives only
+configured flags. Keys saved through Settings are encrypted with safeStorage;
+.env itself is plain text and gitignored. Removing a saved key reactivates the
+fallback if one exists. Saving settings can persist the effective fallback key
+in encrypted form; that saved key subsequently has priority over .env changes.
+
+YouTube verification is an explicit button beside a selected YouTube source and
+on its failed-job page. It opens an isolated sandboxed browser window with no
+application preload or Node access. The user completes any checks and closes the
+window, then clicks Run again. Only YouTube cookies are passed to yt-dlp, in
+memory, with the browser user agent; the snapshot on disk is encrypted. The
+browser session is created only on demand. This is a manual retry flow, not an
+automatic popup/retry. Google may reject embedded browser login, and cookies do
+not guarantee that the provider allows downloading. Keep the same network when
+verifying and retrying. A live captcha/download has not been verified.
+
+A read-only GET /api/v1/profiles using the local .env key returned HTTP 403,
+text/html, server Vercel, title Vercel Security Checkpoint. This is not a JSON
+credential/billing refusal. The app now distinguishes this failure; provider-side
+API access from this network remains unresolved. No key values were logged.
+
+Validation: typecheck, build, scoped ESLint, 2 isolated Electron scenarios,
+30 Node tests across environment keys, YouTube startup, video settings and Zernio
+client (including the HTML checkpoint), and 32 Python checks passed. Four
+render-concurrency validation tests failed; HEAD configuration independently
+accepts the same invalid values (0, 9, 1000, -1), confirming a pre-existing gap.
+
+### Cookie file import
+
+Import YouTube cookies opens a native file picker for Netscape cookies.txt or
+JSON cookie exports (array or cookies array). Only unexpired YouTube cookies
+are retained, encrypted with the OS keychain and atomically saved to the same
+session snapshot used by the downloader. Cancellation and invalid exports leave
+the old snapshot unchanged. No browser or provider call is made by import.
+The original export is left untouched; it remains a plaintext credential file.
+The user must retry downloading; successful import does not prove account
+authentication or download access.
+
+### Paste cookies and edit failed jobs
+
+Paste cookies accepts EditThisCookie JSON directly; Save cookies validates and
+encrypts it through the same main-process importer. The editor clears on save
+or cancel and is never persisted. Tests use fabricated session values only.
+
+Jobs now offers Edit and retry, restoring the saved request in the Create wizard
+at the Video step without starting a run. New run records persist validated,
+allowlisted request fields so retries survive restart. Older records without
+requests can only be restored while their live job snapshot is still available;
+otherwise the retry action is disabled with an explanation.
+
+
+### YouTube cookies download correction (2026-09-29)
+
+Saved EditThisCookie/Netscape cookies are applied in memory for metadata and downloads. The engine now explicitly enables Node from PATH for yt-dlp JavaScript challenges. When a saved session exists, it keeps default clients, includes web_embedded, and excludes tv_downgraded (upstream yt-dlp issue #17389, page needs reload). Logs report only the number of applied cookies. Focused tests cover import, storage and metadata handoff; successful live download with the user session remains unverified. Cookies can expire and do not guarantee YouTube accepts a request.
+
+
+### Cookies and fork maintenance (2026-09-29)
+
+The user confirmed a successful YouTube download with imported cookies. The nonfunctional embedded YouTube verification window and its IPC endpoint have been removed. Use Paste cookies (EditThisCookie JSON) or Import YouTube cookies. The encrypted youtube-session.enc remains in the BridgeClip Codex userData directory across restarts; only an expired/revoked session needs replacement. Never commit cookie exports, .env files, encrypted credential stores or Codex auth.json.
+
+Keep origin/main as the upstream mirror. The application overlay lives on origin/codex/codex-provider. For updates: fetch upstream; fast-forward main to upstream/main; create a backup ref for the overlay; rebase the overlay onto the updated upstream, resolve conflicts, run checks, then publish it. A rewritten published overlay requires an explicit coordinated force-with-lease update. Do not merge our app changes into the mirror or push them to the author.

@@ -63,6 +63,7 @@ function fakeElectron(dir, { isPackaged = false } = {}) {
     app: {
       isPackaged,
       isReady: () => true,
+      getAppPath: () => dir,
       getPath: (name) => {
         const target = path.join(dir, name)
         fs.mkdirSync(target, { recursive: true })

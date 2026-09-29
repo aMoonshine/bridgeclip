@@ -1,3 +1,4 @@
+import { YouTubeVerification } from './YouTubeVerification'
 import { normalizeVideoSource, twitchSourceError, twitchVodId } from '../../shared/video-source'
 import { useCallback, useRef, useState } from 'react'
 import { FileVideo, FolderOpen, Link2, UploadCloud, X, Youtube, Twitch } from 'lucide-react'
@@ -50,6 +51,7 @@ export function SourcePicker({ value, onChange, disabled }: SourcePickerProps): 
   if (value) {
     return <>
       <SourcePreview key={value} source={value} onClear={() => { setPickerError(null); onChange('') }} onReplace={browse} disabled={disabled} />
+      <YouTubeVerification source={value} />
       {pickerError && <p role="alert" className="mt-2.5 px-1 text-xs text-danger">{pickerError}</p>}
     </>
   }

@@ -1,3 +1,5 @@
+import type { ClipJobRequest } from '../shared/jobs'
+import { validateJobConfig } from './validation'
 import { twitchVodId } from '../shared/video-source'
 import { constants, closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { basename, isAbsolute, join, relative, sep } from 'path'
@@ -6,6 +8,7 @@ import { randomUUID } from 'crypto'
 export type StoredRunStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface RunRecord {
+  request?: ClipJobRequest
   jobId: string
   startedAt: string
   finishedAt: string | null
@@ -18,7 +21,7 @@ export interface RunRecord {
 }
 
 const RUN_FILE = 'run-history.json'
-const MAX_RECORD_BYTES = 16 * 1024
+const MAX_RECORD_BYTES = 32 * 1024
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function runDirectory(baseDir: string, jobId: string): string {
@@ -80,6 +83,9 @@ export function readRunRecord(baseDir: string, jobId: string): RunRecord | null 
         (record.failureCode != null && (typeof record.failureCode !== 'string' || !/^[a-z]+(?:[._][a-z]+)*$/.test(record.failureCode) || record.failureCode.length > 64)) ||
         (record.failureStage != null && !['setup', 'download', 'transcription', 'planning', 'rendering', 'saving', 'uploading'].includes(record.failureStage)) ||
         (record.httpStatus != null && (!Number.isInteger(record.httpStatus) || record.httpStatus < 100 || record.httpStatus > 599))) return null
+    if (record.request) {
+      try { record.request = savedRequest(record.request) } catch { delete record.request }
+    }
     return record as RunRecord
   } catch {
     return null
@@ -99,13 +105,20 @@ function writeRunRecord(baseDir: string, record: RunRecord): void {
   }
 }
 
-export function createRunRecord(baseDir: string, jobId: string, source: string): void {
+function savedRequest(value: ClipJobRequest): ClipJobRequest {
+  const validated = validateJobConfig(value)
+  const fields = ['videoUrl', 'clippingMode', 'plannerModel', 'transcriptionModel', 'maxClips', 'autoClipCount', 'durationRanges', 'aspectRatio', 'layoutStyle', 'layoutVision', 'pacing', 'videoSpeed', 'includeCaptions', 'captionPreset', 'startTimeSeconds', 'endTimeSeconds', 'bannerPlatform', 'bannerChannelUrl'] as const
+  return Object.fromEntries(fields.filter(key => validated[key] !== undefined).map(key => [key, validated[key]])) as unknown as ClipJobRequest
+}
+
+export function createRunRecord(baseDir: string, jobId: string, source: string, request?: ClipJobRequest): void {
   mkdirSync(runDirectory(baseDir, jobId), { recursive: true, mode: 0o700 })
   writeRunRecord(baseDir, {
     jobId,
     startedAt: new Date().toISOString(),
     finishedAt: null,
     sourceLabel: sourceLabel(source),
+    ...(request ? { request: savedRequest(request) } : {}),
     status: 'running',
     errorMessage: null
   })

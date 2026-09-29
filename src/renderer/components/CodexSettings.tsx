@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { getApi } from '../lib/ipc'
 import { useSettingsStore } from '../store/use-settings-store'
 import { Panel } from './ui/Panel'
@@ -8,25 +8,37 @@ import type { CodexStatus } from '../../shared/codex'
 export function CodexSettings({ compact = false }: { compact?: boolean }): React.JSX.Element {
   const { codexModel, codexReasoning, saving, save } = useSettingsStore()
   const [status, setStatus] = useState<CodexStatus | null>(null)
-  const [busy, setBusy] = useState(true)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   async function check(login: boolean): Promise<void> {
-    setBusy(true); setError('')
+    setBusy(true); setError(''); setNotice('')
     try { setStatus(await (login ? getApi().codex.login() : getApi().codex.status())) }
     catch (e) { setStatus(null); setError(e instanceof Error ? e.message : 'Could not connect to Codex.') }
     finally { setBusy(false) }
   }
-  useEffect(() => { void check(false) }, [])
+  async function updateSignIn(): Promise<void> {
+    setBusy(true); setError(''); setNotice('')
+    try {
+      await getApi().codex.refreshAuth()
+      setStatus(null)
+      setNotice('Sign-in data updated locally. Click Check connection when ready.')
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not update sign-in data.') }
+    finally { setBusy(false) }
+  }
   const selected = status?.models.find(m => m.id === codexModel)
   const efforts = selected?.reasoningEfforts ?? []
   const Wrapper = compact ? 'div' : Panel
   return <Wrapper>
     {!compact && <h2 className="text-sm font-semibold text-ink">Codex connection</h2>}
     <p className="mt-2 text-xs text-ink-muted">Quality: planning, local face tracking and image checks for uncertain shots. Economy: planning and local framing. Uses your ChatGPT subscription limits. Whisper transcription still uses OpenRouter.</p>
-    <div className="mt-3 flex gap-2">
-      {status?.connected === false && <Button disabled={busy} onClick={() => void check(true)}>Sign in with ChatGPT</Button>}
+    <div className="mt-3 flex flex-wrap gap-2">
+      <Button disabled={busy} onClick={() => void updateSignIn()}>Update sign-in from Codex</Button>
+      <Button disabled={busy} onClick={() => void check(true)}>Sign in with ChatGPT</Button>
       <Button disabled={busy} onClick={() => void check(false)}>{busy ? 'Connecting...' : 'Check connection'}</Button>
     </div>
+    {!status && !notice && <p className="mt-2 text-xs text-ink-muted">Connection not checked. Checks run only when you click Check connection.</p>}
+    {notice && <p className="mt-2 text-xs" role="status">{notice}</p>}
     {status && <p className="mt-2 text-xs" role="status">{status.connected ? 'Connected with ChatGPT' : 'Not signed in. Use Sign in with ChatGPT.'}</p>}
     {error && <p className="mt-2 text-xs text-danger" role="alert">{error}</p>}
     <label className="mt-4 block text-xs text-ink-muted" htmlFor="codex-model">Planning and Vision model</label>
@@ -44,6 +56,6 @@ export function CodexSettings({ compact = false }: { compact?: boolean }): React
       {efforts.map(effort => <option key={effort} value={effort}>{effort}</option>)}
     </select>
     <p className="mt-2 text-xs text-ink-muted">Selected: {codexModel} / {codexReasoning}. Applies to planning and image checks. Higher reasoning can take longer; it does not guarantee better framing.</p>
-    <p className="mt-2 text-2xs text-ink-subtle">Check connection to refresh available models. No automatic switch to a paid API when Codex fails.</p>
+    <p className="mt-2 text-2xs text-ink-subtle">Update sign-in from Codex copies saved credentials on this computer without connecting. Check connection contacts Codex and refreshes available models. Starting a clipping run also connects to Codex.</p>
   </Wrapper>
 }

@@ -246,3 +246,7 @@ test('provider text sanitising caps length and removes links, tokens and control
   assert.equal(cleanHandle('\u0001'), null)
   assert.equal(cleanHandle('a'.repeat(300)).length, 120)
 })
+
+test('Vercel HTML 403 is a security checkpoint, not a key or billing error', () => withMock(async ({api}) => {
+ await assert.rejects(api.listProfiles(),error => error.status === 403 && error.code === 'security_checkpoint' && /Vercel/.test(error.message))
+}, {extraRoutes:[{method:'GET',path:'/api/v1/profiles',handler:ctx=>ctx.text(403,'<html><title>Vercel Security Checkpoint</title></html>',{'content-type':'text/html'})}]}))

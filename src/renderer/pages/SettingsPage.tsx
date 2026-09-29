@@ -144,7 +144,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
             <PanelHeader
               icon={<IconTile tone="accent"><KeyRound /></IconTile>}
               title="API keys"
-              description="Encrypted with your system keychain. BridgeClip has no account and no server of its own."
+              description="Keys entered here are encrypted with your system keychain. If a saved key is empty, BridgeClip reads the environment, then the local .env file. Values in .env remain plain text."
             />
             <div className="mt-4 space-y-2">
               <KeyRow>

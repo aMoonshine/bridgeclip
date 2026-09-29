@@ -33,6 +33,7 @@ export interface ClipSettings {
 export type { ClipJobRequest, JobSnapshot } from '../shared/jobs'
 
 export interface HistoryEntry {
+  request?: import('../shared/jobs').ClipJobRequest
   jobId: string
   date: string
   videoTitle: string
@@ -61,7 +62,8 @@ export interface ToolStatus {
 }
 
 export interface BridgeClipAPI {
-  codex: { status: () => Promise<CodexStatus>; login: () => Promise<CodexStatus> }
+  youtube: { importCookies: () => Promise<boolean>; pasteCookies: (text: string) => Promise<void> }
+  codex: { status: () => Promise<CodexStatus>; login: () => Promise<CodexStatus>; refreshAuth: () => Promise<void> }
   models: { list: (refresh?: boolean) => Promise<OpenRouterCatalog> }
   automations: {
     list: () => Promise<Automation[]>
@@ -184,7 +186,8 @@ function subscribe<T>(channel: string, callback: (data: T) => void): () => void 
 }
 
 const api: BridgeClipAPI = {
-  codex: { status: () => ipcRenderer.invoke('codex:status'), login: () => ipcRenderer.invoke('codex:login') },
+  youtube: { importCookies: () => ipcRenderer.invoke('youtube:importCookies'), pasteCookies: (text: string) => ipcRenderer.invoke('youtube:pasteCookies', text) },
+  codex: { status: () => ipcRenderer.invoke('codex:status'), login: () => ipcRenderer.invoke('codex:login'), refreshAuth: () => ipcRenderer.invoke('codex:refreshAuth') },
   models: { list: (refresh = false) => ipcRenderer.invoke('models:list', refresh) },
   automations: {
     list: () => ipcRenderer.invoke('automations:list'),

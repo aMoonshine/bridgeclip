@@ -23,6 +23,7 @@ from typing import Literal, Optional
 from urllib.parse import unquote, urljoin, urlparse
 
 import boto3
+from .youtube_session import apply_session, session_data, extraction_options
 import yt_dlp
 from botocore.config import Config as BotocoreConfig
 
@@ -224,7 +225,7 @@ class VideoDownloaderService:
             "noplaylist": True,
             "socket_timeout": 30,
             "http_headers": {
-                "User-Agent": random.choice(UA_LIST),
+                "User-Agent": session_data().get("userAgent") or random.choice(UA_LIST),
                 "Accept-Language": "en-US,en;q=0.9",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             },
@@ -489,6 +490,8 @@ class VideoDownloaderService:
                         ydl_opts["allowed_extractors"] = ["twitch:vod"]
                         ydl_opts["skip_unavailable_fragments"] = False
                         ydl_opts["match_filter"] = lambda info, *, incomplete=False: self._validate_twitch_info(info, max_duration, incomplete)
+                    if source_type == "youtube":
+                        ydl_opts.update(extraction_options())
                     ydl_opts["format"] = format_selector
                     ydl_opts["progress_hooks"] = [check_progress]
                     ydl_opts["postprocessor_hooks"] = [check_progress]
@@ -498,6 +501,8 @@ class VideoDownloaderService:
 
                     with guarded_ytdlp_children(deadline), guarded_public_connections():
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            if source_type == "youtube":
+                                apply_session(ydl)
                             ydl.download([url])
 
                     # If we get here, download succeeded
@@ -940,10 +945,14 @@ class VideoDownloaderService:
                 "no_warnings": True,
             })
 
+            if not twitch_url:
+                opts.update(extraction_options())
             if twitch_url:
                 opts["allowed_extractors"] = ["twitch:vod"]
             with guarded_ytdlp_children(deadline), guarded_public_connections():
                 with yt_dlp.YoutubeDL(opts) as ydl:
+                    if not twitch_url:
+                        apply_session(ydl)
                     return ydl.extract_info(url, download=False)
 
         try:

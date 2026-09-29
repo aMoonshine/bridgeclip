@@ -1,3 +1,4 @@
+import { YouTubeVerification } from './YouTubeVerification'
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Check, Clapperboard, Clock3, Download, FileText, Film, Gauge, Github, RotateCcw, ScrollText, Sparkles } from 'lucide-react'
 import { cn, formatTimecode, sourceLabel } from '../lib/utils'
@@ -193,9 +194,10 @@ export function JobFailure({ job, onRetry, leading }: { job: Job; onRetry: () =>
         )}
       </section>
 
+      <YouTubeVerification source={job.request.videoUrl} />
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <Button variant="primary" icon={<RotateCcw className="h-4 w-4" />} onClick={onRetry}>
-          Run again
+          Edit and retry
         </Button>
         <Button icon={<ScrollText className="h-4 w-4" />} onClick={() => getApi().diagnostics.openLogFolder()}>
           Show logs

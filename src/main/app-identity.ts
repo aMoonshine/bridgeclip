@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, constants } from 'fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 if (process.env.BRIDGECLIP_E2E !== '1') {
   const root = join(app.getPath('appData'), 'BridgeClip Codex')
@@ -23,12 +23,7 @@ if (process.env.BRIDGECLIP_E2E !== '1') {
   }
   const codexHome = join(root, 'codex')
   mkdirSync(codexHome, { recursive: true, mode: 0o700 })
-  const auth = join(process.env.CODEX_HOME || join(app.getPath('home'), '.codex'), 'auth.json')
-  const target = join(codexHome, 'auth.json')
-  if (!existsSync(target) && existsSync(auth)) {
-    try { copyFileSync(auth, target, constants.COPYFILE_EXCL) }
-    catch { /* The user can sign in from Settings. */ }
-  }
+  // Credentials are imported only by the explicit Settings action.
   app.setName('BridgeClip Codex')
   app.setPath('userData', root)
   app.setAppLogsPath(join(root, 'logs'))

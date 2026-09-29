@@ -1,3 +1,4 @@
+import { importYouTubeCookies, savePastedYouTubeCookies } from './youtube-session'
 import { mediaLibrary, outputLibraries } from './output-libraries'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, realpathSync } from 'fs'
@@ -19,7 +20,7 @@ import { assertPublicWebUrl } from './network-policy'
 import { validateJobConfig } from './validation'
 import { getModelCatalog, resolveAdvancedModels, resolveModel } from './openrouter-models'
 import { deleteCachedSource, readSourceCache } from './source-cache'
-import { checkCodex } from './codex-service'
+import { checkCodex, refreshCodexAuth, hasSavedCodexAuth } from './codex-service'
 import { randomUUID } from 'crypto'
 import { resolveBinary, supportsCaptionFilter } from './tools'
 import { approveAutomationTikTokReview, prepareAutomationTikTokReview, addAutomationContent, addLibraryClipsToAutomation, createAutomation, deleteAutomation, isAutomationMedia, listAutomations, removeAutomationContent, runAutomation, updateAutomation, updateAutomationContent } from './automations'
@@ -60,8 +61,14 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     assertTrustedSender(event, getMainWindow())
     return listener(event, ...args)
   })
+  handle('youtube:pasteCookies', (_event, text: unknown) => savePastedYouTubeCookies(text))
+  handle('youtube:importCookies', () => importYouTubeCookies(getMainWindow()))
   handle('codex:status', () => checkCodex())
-  handle('codex:login', () => checkCodex(true))
+  const assertCodexIdle = (): void => {
+    if (liveJobIds().size) throw new Error('Wait for current clipping jobs to finish before changing Codex sign-in data.')
+  }
+  handle('codex:login', () => { assertCodexIdle(); return checkCodex(true) })
+  handle('codex:refreshAuth', () => { assertCodexIdle(); refreshCodexAuth() })
   handle('settings:load', () => {
     return publicSettings(loadSettings())
   })
@@ -170,11 +177,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
       if (config.clippingMode === 'advanced') config.plannerCapabilities = await resolveAdvancedModels(config.plannerModel!, config.transcriptionModel!)
       else {
         delete config.plannerModel; delete config.transcriptionModel
-        const codex = await checkCodex()
-        if (!codex.connected) throw new Error('Sign in to ChatGPT in Settings before starting a Codex run.')
-        const model = codex.models.find(m => m.id === loadSettings().codexModel)
-        if (!model || !model.vision) throw new Error('Choose an available Codex model with image support in Settings.')
-        if (!model.reasoningEfforts?.includes(loadSettings().codexReasoning)) throw new Error('Refresh Codex models and choose a supported reasoning level.')
+        if (!hasSavedCodexAuth()) throw new Error('Update sign-in from Codex or sign in with ChatGPT in Settings before starting a run.')
       }
       if (config.clippingMode !== 'advanced' && config.transcriptionModel) await resolveModel('transcription', config.transcriptionModel)
       if (isWebUrl(config.videoUrl)) await assertPublicWebUrl(config.videoUrl)
@@ -224,7 +227,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     const jobId = randomUUID()
     logger.info('job.start.request', { jobId, sourceType: isWebUrl(config.videoUrl) ? 'remote' : 'local', aspectRatio: config.aspectRatio })
     try {
-      createRunRecord(settings.outputDirectory, jobId, config.videoUrl)
+      createRunRecord(settings.outputDirectory, jobId, config.videoUrl, config)
     } catch {
       try { finishRunRecord(settings.outputDirectory, jobId, 'failed', 'Could not start this run.') } catch { /* Output folder may be unavailable. */ }
       return { error: 'Could not create the clipping run. Check the output folder and retry.' }

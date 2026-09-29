@@ -1,3 +1,4 @@
+import { environmentKeys } from './environment-keys'
 import { app, safeStorage } from 'electron'
 import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs'
 import { isAbsolute, join, relative as pathRelative } from 'path'
@@ -184,7 +185,7 @@ function decodeSecret(value: unknown): { value: string; legacy: boolean } {
 
 export function loadSettings(): AppSettings {
   const path = getSettingsPath()
-  if (!existsSync(path)) return { ...DEFAULT_SETTINGS }
+  if (!existsSync(path)) return { ...DEFAULT_SETTINGS, ...environmentKeys() }
 
   try {
     const raw = JSON.parse(readFileSync(path, 'utf-8'))
@@ -210,7 +211,8 @@ export function loadSettings(): AppSettings {
     })
 
     if (needsMigration && canEncrypt()) writeSettings(settings)
-    return settings
+    const fallback = environmentKeys()
+    return { ...settings, openrouterApiKey: settings.openrouterApiKey || fallback.openrouterApiKey, zernioApiKey: settings.zernioApiKey || fallback.zernioApiKey }
   } catch (error) {
     throw new Error('Could not read saved settings. The settings file was kept for recovery.', { cause: error })
   }

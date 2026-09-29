@@ -1,3 +1,5 @@
+import { useDraftStore } from '../store/use-draft-store'
+import type { ClipJobRequest } from '../../shared/jobs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Ban, FolderOpen, ListVideo, Plus, RefreshCw, RotateCcw, Search, X } from 'lucide-react'
 import type { HistoryEntry } from '../../preload/index'
@@ -97,16 +99,11 @@ export function JobsPage({ onNavigate }: { onNavigate: (page: AppPage) => void }
     }
   }
 
-  const runAgain = async (job: Job): Promise<void> => {
-    setError(null)
-    try {
-      const result = await getApi().job.start(job.request)
-      if (result.error) setError(result.error)
-      else if (result.jobId) focusJob(result.jobId)
-    } catch (err) {
-      setError(errorMessage(err, 'Could not start this job again.'))
-    }
+  const editRun = (request: ClipJobRequest): void => {
+    useDraftStore.getState().loadRequest(request)
+    focusJob(null); setOpenRun(null); onNavigate('clip')
   }
+  const runAgain = (job: Job): void => editRun(job.request)
 
   const openEntry = async (entry: HistoryEntry): Promise<void> => {
     setError(null)
@@ -172,12 +169,14 @@ export function JobsPage({ onNavigate }: { onNavigate: (page: AppPage) => void }
         if (useJobStore.getState().jobs[entry.jobId]) focusJob(entry.jobId)
         else void openEntry(entry)
       }}
+      onRetryEntry={(entry) => { const request = useJobStore.getState().jobs[entry.jobId]?.request ?? entry.request; if (request) editRun(request) }}
       onOpenFolder={(dir) => { void openFolder(dir) }}
     />
   )
 }
 
-function JobsList({ active, entries, filter, query, error, refreshing, onFilter, onQuery, onDismissError, onRefresh, onNew, onOpenJob, onCancel, onOpenEntry, onOpenFolder }: {
+function JobsList({ active, entries, filter, query, error, refreshing, onFilter, onQuery, onDismissError, onRefresh, onNew, onOpenJob, onCancel, onOpenEntry, onOpenFolder, onRetryEntry }: {
+  onRetryEntry: (entry: HistoryEntry) => void
   active: Job[]
   entries: HistoryEntry[] | null
   filter: Filter
@@ -322,7 +321,7 @@ function JobsList({ active, entries, filter, query, error, refreshing, onFilter,
               ) : (
                 <ul className="divide-y divide-white/[0.05]">
                   {visible.map((entry) => (
-                    <PreviousJobRow key={entry.jobId} entry={entry} hasDetails={Boolean(sessionJobs[entry.jobId])} onOpen={() => onOpenEntry(entry)} onOpenFolder={() => onOpenFolder(entry.outputDir)} />
+                    <PreviousJobRow onRetry={(sessionJobs[entry.jobId]?.request ?? entry.request) ? () => onRetryEntry(entry) : undefined} key={entry.jobId} entry={entry} hasDetails={Boolean(sessionJobs[entry.jobId])} onOpen={() => onOpenEntry(entry)} onOpenFolder={() => onOpenFolder(entry.outputDir)} />
                   ))}
                 </ul>
               )}
@@ -416,7 +415,7 @@ const STATUS_TEXT: Record<HistoryEntry['status'], string> = {
 }
 
 /** One line per run: status, title, then clips, run time, cost and date in aligned columns. */
-function PreviousJobRow({ entry, hasDetails, onOpen, onOpenFolder }: { entry: HistoryEntry; hasDetails: boolean; onOpen: () => void; onOpenFolder: () => void }): React.JSX.Element {
+function PreviousJobRow({ entry, hasDetails, onOpen, onOpenFolder, onRetry }: { onRetry?: () => void; entry: HistoryEntry; hasDetails: boolean; onOpen: () => void; onOpenFolder: () => void }): React.JSX.Element {
   const status = STATUS[entry.status]
   const completed = entry.status === 'completed'
   // Failed and cancelled jobs from this session keep their options, so they can run again.
@@ -454,6 +453,7 @@ function PreviousJobRow({ entry, hasDetails, onOpen, onOpenFolder }: { entry: Hi
       ) : (
         <div className={cellClass}>{cells}</div>
       )}
+      <Button size="sm" variant="ghost" iconOnly disabled={!onRetry} aria-label={`Edit and retry ${entry.videoTitle}`} title={onRetry ? "Edit and retry in Create" : "This older run has no saved settings"} icon={<RotateCcw className="h-3.5 w-3.5" />} onClick={onRetry} />
       <Button
         size="sm"
         variant="ghost"
@@ -475,7 +475,7 @@ function JobCancelled({ job, leading, onRetry }: { job: Job; leading: React.Reac
       <h1 className="text-xl font-semibold tracking-[-0.02em] text-ink">Job cancelled</h1>
       <p className="mt-1 truncate text-sm text-ink-muted" title={job.request.videoUrl}>{sourceLabel(job.request.videoUrl)}</p>
       <div className="mt-4">
-        <Button variant="primary" icon={<RotateCcw className="h-3.5 w-3.5" />} onClick={onRetry}>Run again</Button>
+        <Button variant="primary" icon={<RotateCcw className="h-3.5 w-3.5" />} onClick={onRetry}>Edit and retry</Button>
       </div>
     </Page>
   )

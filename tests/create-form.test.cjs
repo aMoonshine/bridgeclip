@@ -245,3 +245,13 @@ test('Twitch VOD links canonicalize while other Twitch pages are rejected', () =
   assert.match(html, /Public, completed videos only/)
   assert.doesNotMatch(html, /<img/)
 })
+
+test('retry restores every wizard option and clears the previous success screen',()=>{
+ const {useDraftStore,buildJobRequest,parseTrimRange}=form.exports
+ const request={videoUrl:'https://www.youtube.com/watch?v=abcdefghijk',clippingMode:'advanced',plannerModel:'test/planner',transcriptionModel:'test/transcriber',maxClips:8,autoClipCount:false,durationRanges:['short'],aspectRatio:'9:16',layoutStyle:'auto',layoutVision:true,pacing:'natural',videoSpeed:1.5,includeCaptions:false,captionPreset:'pop',startTimeSeconds:12,endTimeSeconds:95,bannerPlatform:null,bannerChannelUrl:null}
+ useDraftStore.getState().markStarted({jobId:'previous',source:'old',queued:false})
+ useDraftStore.getState().loadRequest(request)
+ const draft=useDraftStore.getState()
+ assert.equal(draft.step,'video');assert.equal(draft.started,null)
+ assert.deepEqual(buildJobRequest(draft,parseTrimRange(draft.trimOpen,draft.trimStart,draft.trimEnd)),request)
+})

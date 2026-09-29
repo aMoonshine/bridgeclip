@@ -52,6 +52,7 @@ class CodexSession:
                 executable(), "app-server", "--stdio", "-c", 'web_search="disabled"',
                 "-c", 'features.shell_tool=false', "-c", 'features.multi_agent=false',
                 "-c", 'project_doc_max_bytes=0',
+                "-c", 'cli_auth_credentials_store="file"',
                 cwd=self.work.name, env=env, stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
                 limit=4 * 1024 * 1024,
@@ -244,8 +245,8 @@ async def main():
     import sys
     try:
         async with CodexSession() as session:
-            connected = await session.account()
-            if "--login" in sys.argv and not connected:
+            connected = False if "--login" in sys.argv else await session.account()
+            if "--login" in sys.argv:
                 result = await session.request("account/login/start", {"type": "chatgpt"})
                 print(json.dumps({"authUrl": result["authUrl"]}), flush=True)
                 async with asyncio.timeout(180):

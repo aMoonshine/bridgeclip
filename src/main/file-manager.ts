@@ -11,6 +11,7 @@ import { parseJobOutput, type JobOutput } from '../shared/job-output'
 import { readRunRecord } from './run-history'
 
 export interface JobHistoryEntry {
+  request?: import('../shared/jobs').ClipJobRequest
   jobId: string
   date: string
   videoTitle: string
@@ -76,6 +77,7 @@ export async function getJobHistory(baseDir: string, activeJobIds: ReadonlySet<s
         const costs = data.metrics?.api_costs
         const costVal = costs && typeof costs === 'object' ? (costs as Record<string, unknown>).total_estimated_cost_usd : null
         entries.push({
+          request: record?.request,
           jobId: dir.name,
           date: record?.startedAt ?? result.modified.toISOString(),
           videoTitle: data.source_video_title,
@@ -100,7 +102,7 @@ export async function getJobHistory(baseDir: string, activeJobIds: ReadonlySet<s
                   ? (activeJobIds.has(dir.name) ? 'running' : 'interrupted')
                   : record?.status === 'failed' || record?.status === 'cancelled'
                     ? record.status : 'incomplete'
-                entries.push({ jobId: dir.name, date: record?.startedAt ?? stat.mtime.toISOString(),
+                entries.push({ request: record?.request, jobId: dir.name, date: record?.startedAt ?? stat.mtime.toISOString(),
                   videoTitle: record?.sourceLabel ?? 'Unfinished run', clipCount: 0,
                   status, outputDir: runDir, totalCostUsd: null,
                   finishedAt: record?.finishedAt ?? null, durationMs,

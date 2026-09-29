@@ -8,6 +8,12 @@ const ts = require('typescript')
 const { fileLinksAvailable, directoryLinkType } = require('../support/symlinks.cjs')
 
 function loadSource(file, mocks = {}, globals = {}) {
+  // Isolate local credentials; dedicated importer tests cover these modules.
+  mocks = {
+    './environment-keys': { environmentKeys: () => ({ openrouterApiKey: '', zernioApiKey: '' }) },
+    './youtube-session': { savedYouTubeSession: () => undefined },
+    ...mocks
+  }
   const source = fs.readFileSync(path.join(__dirname, '../../src/main', file), 'utf8')
   const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
   const module = { exports: {} }
@@ -26,9 +32,9 @@ process.on('exit', () => fs.rmSync(TEST_WORK_HOME, { recursive: true, force: tru
 const jobContract = loadShared('job-contract.ts')
 const jobOutput = loadShared('job-output.ts')
 const videoSource = loadShared('video-source.ts')
-const runHistory = loadSource('run-history.ts', { '../shared/video-source': videoSource })
 const security = loadSource('security.ts', { electron: {}, '../shared/brand': loadShared('brand.ts') })
 const { validateJobConfig } = loadSource('validation.ts', { './security': security, '../shared/video-source': videoSource, '../shared/job-contract': jobContract, '../shared/openrouter-models': loadShared('openrouter-models.ts') })
+const runHistory = loadSource('run-history.ts', { '../shared/video-source': videoSource, './validation': { validateJobConfig } })
 
 test('development checks the staged FFmpeg that the clipping engine uses', async () => {
   const binDir = path.join(__dirname, '../../engine-bin')

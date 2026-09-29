@@ -158,7 +158,7 @@ def test_vision_queue_overlaps_two_requests_and_remains_bounded(monkeypatch):
  asyncio.run(run())
 
 
-def test_login_reuses_saved_account_without_browser(monkeypatch, capsys):
+def test_manual_status_reuses_saved_account_without_browser(monkeypatch, capsys):
  class Session:
   async def __aenter__(self): return self
   async def __aexit__(self,*args): pass
@@ -166,7 +166,7 @@ def test_login_reuses_saved_account_without_browser(monkeypatch, capsys):
   async def models(self): return []
   async def request(self,*args): raise AssertionError('Existing login must not start browser login again')
  monkeypatch.setattr(module,'CodexSession',Session)
- monkeypatch.setattr(sys,'argv',['codex_provider','--login'])
+ monkeypatch.setattr(sys,'argv',['codex_provider','--status'])
  asyncio.run(module.main())
  assert json.loads(capsys.readouterr().out)['connected'] is True
 
@@ -178,7 +178,9 @@ def test_logged_out_account_still_can_sign_in(monkeypatch, capsys):
    self.events=asyncio.Queue()
   async def __aenter__(self): return self
   async def __aexit__(self,*args): pass
-  async def account(self): return self.connected
+  async def account(self):
+   assert self.connected, 'Explicit sign-in must not read a broken old account first'
+   return self.connected
   async def models(self): return []
   async def request(self,method,params):
    assert method=='account/login/start' and params=={'type':'chatgpt'}
