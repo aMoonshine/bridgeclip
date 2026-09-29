@@ -532,9 +532,9 @@ class VideoDownloaderService:
                         raise
 
                     # Bot detection will affect every format selector.
-                    if "Sign in to confirm" in error_str or "bot" in error_str.lower():
+                    if source_type == "youtube" and ("Sign in to confirm" in error_str or "bot" in error_str.lower()):
                         logger.warning("Bot detection triggered")
-                        raise
+                        raise VideoDownloadError("YouTube session needs verification", reason="youtube_auth") from e
 
                     # Check if it's a format issue - try next selector
                     if "Requested format" in error_str or "No video formats" in error_str:
@@ -979,9 +979,8 @@ class VideoDownloaderService:
             if "Sign in to confirm" in error_str or "bot" in error_str.lower():
                 logger.error("YouTube bot detection triggered for metadata")
                 raise VideoDownloadError(
-                    "YouTube is temporarily blocking this request. Please try again in a few moments, "
-                    "or try a different video URL."
-                )
+                    "YouTube session needs verification", reason="youtube_auth"
+                ) from e
             raise VideoDownloadError(f"Failed to get video info: {e}")
 
         heights = sorted({int(finite_number(f.get("height"))) for f in info.get("formats", [])

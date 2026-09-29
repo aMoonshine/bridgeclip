@@ -58,3 +58,26 @@ def test_metadata_receives_saved_cookies_and_runtime(monkeypatch):
     monkeypatch.setattr(module.yt_dlp, "YoutubeDL", Downloader)
     service = module.VideoDownloaderService.__new__(module.VideoDownloaderService)
     asyncio.run(service._get_video_info("https://www.youtube.com/watch?v=fixture"))
+
+
+def test_youtube_auth_failure_survives_safe_error_mapping(monkeypatch):
+    import asyncio
+    import pytest
+    from clip_engine.services import video_downloader as module
+    from clip_engine.error_policy import safe_processing_error, safe_failure_code, safe_job_error_text
+    monkeypatch.setenv("BRIDGECLIP_YOUTUBE_SESSION", json.dumps({"cookies": []}))
+    class Downloader:
+        def __init__(self, options): self.cookiejar = CookieJar()
+        def __enter__(self): return self
+        def __exit__(self, *_): pass
+        def extract_info(self, *args, **kwargs):
+            raise RuntimeError("Sign in to confirm you're not a bot. PRIVATE_PROVIDER_DETAIL")
+    monkeypatch.setattr(module.yt_dlp, "YoutubeDL", Downloader)
+    service = module.VideoDownloaderService.__new__(module.VideoDownloaderService)
+    with pytest.raises(module.VideoDownloadError) as caught:
+        asyncio.run(service._get_video_info("https://www.youtube.com/watch?v=fixture"))
+    assert safe_failure_code(caught.value) == "download.youtube_auth"
+    text = safe_processing_error(caught.value)
+    assert text == "YouTube session needs verification"
+    assert safe_job_error_text(text) == text
+    assert "PRIVATE_PROVIDER_DETAIL" not in text
