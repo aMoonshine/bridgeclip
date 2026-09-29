@@ -1,4 +1,4 @@
-import { importYouTubeCookies, savePastedYouTubeCookies } from './youtube-session'
+import { importYouTubeCookies, savePastedYouTubeCookies, youtubeSessionStatus } from './youtube-session'
 import { mediaLibrary, outputLibraries } from './output-libraries'
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import { existsSync, realpathSync } from 'fs'
@@ -61,6 +61,7 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     assertTrustedSender(event, getMainWindow())
     return listener(event, ...args)
   })
+  handle('youtube:sessionStatus', () => youtubeSessionStatus())
   handle('youtube:pasteCookies', (_event, text: unknown) => savePastedYouTubeCookies(text))
   handle('youtube:importCookies', () => importYouTubeCookies(getMainWindow()))
   handle('codex:status', () => checkCodex())

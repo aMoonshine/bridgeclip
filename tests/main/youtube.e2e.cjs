@@ -19,6 +19,19 @@ test('imported YouTube cookies survive an app restart',{timeout:90000},async t=>
  const restarted=await launchApp({appDir:path.resolve('.'),userDataDir:root});t.after(restarted.close)
  const restored=await restarted.app.evaluate(({app,safeStorage})=>JSON.parse(safeStorage.decryptString(process.getBuiltinModule('fs').readFileSync(process.getBuiltinModule('path').join(app.getPath('userData'),'youtube-session.enc')))))
  assert.equal(restored.cookies[0].value,'pasted-fixture-value')
+ const status=await restarted.page.evaluate(()=>window.bridgeclip.youtube.sessionStatus())
+ assert.equal(status.count,1);assert.ok(status.savedAt)
+ await restarted.page.getByRole('button',{name:'Settings',exact:true}).click()
+ await restarted.page.getByRole('button',{name:'YouTube cookies',exact:true}).click()
+ await restarted.page.getByText(/1 cookies saved on/).waitFor()
+ await restarted.page.getByRole('button',{name:'Paste cookies',exact:true}).click()
+ await restarted.page.getByRole('textbox',{name:'Cookies JSON from EditThisCookie'}).fill(JSON.stringify([{domain:'.youtube.com',name:'SID',value:'settings-fixture',session:true}]))
+ await restarted.page.getByRole('button',{name:'Save cookies',exact:true}).click()
+ await restarted.page.getByText('Cookies saved, encrypted and read back successfully. Used by the next download or retry.').waitFor()
+ const final=await restarted.app.evaluate(({app,safeStorage})=>JSON.parse(safeStorage.decryptString(process.getBuiltinModule('fs').readFileSync(process.getBuiltinModule('path').join(app.getPath('userData'),'youtube-session.enc')))))
+ assert.equal(final.cookies[0].value,'settings-fixture')
+
+
  assert.equal(await restarted.app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows().length),1)
 
 })

@@ -1,3 +1,4 @@
+import type { YouTubeSessionStatus } from '../shared/youtube'
 import { app, BrowserWindow, dialog, safeStorage } from 'electron'
 import { existsSync, readFileSync, writeFileSync, renameSync, statSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -9,6 +10,13 @@ export function savedYouTubeSession(): string | undefined {
   if (!existsSync(snapshotPath())) return undefined
   try { return safeStorage.decryptString(readFileSync(snapshotPath())) }
   catch { throw new Error('Could not read the saved YouTube session. Import your YouTube cookies again.') }
+}
+
+export function youtubeSessionStatus(): YouTubeSessionStatus {
+  const raw = savedYouTubeSession()
+  if (!raw) return { saved: false, count: 0, savedAt: null }
+  const data = JSON.parse(raw)
+  return { saved: true, count: data.cookies.length, savedAt: new Date(statSync(snapshotPath()).mtimeMs).toISOString() }
 }
 
 export async function importYouTubeCookies(parent: BrowserWindow | null): Promise<boolean> {
@@ -25,7 +33,7 @@ export async function importYouTubeCookies(parent: BrowserWindow | null): Promis
   return true
 }
 
-export function savePastedYouTubeCookies(text: unknown): void {
+export function savePastedYouTubeCookies(text: unknown): YouTubeSessionStatus {
   if (typeof text !== 'string') throw new Error('Paste a cookie JSON export.')
   if (!safeStorage.isEncryptionAvailable() || (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text')) throw new Error('Unlock your system keychain before importing cookies.')
   const cookies = parseYouTubeCookies(text)
@@ -34,6 +42,8 @@ export function savePastedYouTubeCookies(text: unknown): void {
     const contents = safeStorage.encryptString(JSON.stringify({cookies}))
     writeFileSync(temporary, contents, {mode: 0o600, flag: 'wx'})
     renameSync(temporary, snapshotPath())
+    if (savedYouTubeSession() !== JSON.stringify({cookies})) throw new Error('Read-back failed')
   } catch { throw new Error('Could not encrypt and save the imported YouTube cookies.') }
   finally { rmSync(temporary, {force: true}) }
+  return youtubeSessionStatus()
 }

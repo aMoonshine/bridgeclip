@@ -1,3 +1,4 @@
+import { YouTubeVerification } from '../components/YouTubeVerification'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ArrowUpRight, BookA, Check, ChevronDown, Cpu, FolderOpen, Github, Info, KeyRound, Loader2, RefreshCw, ScrollText, Zap } from 'lucide-react'
 import { useSettingsStore } from '../store/use-settings-store'
@@ -21,7 +22,7 @@ import { VideoSettings } from '../components/VideoSettings'
 import { CodexSettings } from '../components/CodexSettings'
 import { SourceCacheSettings } from '../components/SourceCacheSettings'
 
-type SectionId = 'keys' | 'video' | 'vocabulary' | 'output' | 'system' | 'about'
+type SectionId = 'keys' | 'youtube' | 'video' | 'vocabulary' | 'output' | 'system' | 'about'
 type SectionTone = 'success' | 'warning' | 'danger' | 'idle'
 
 /** `showUpdates` changes each time Help → Check for Updates… asks for the Updates row. */
@@ -59,6 +60,7 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
 
   const sections: { id: SectionId; label: string; icon: ReactNode; tone: SectionTone }[] = [
     { id: 'keys', label: 'API keys', icon: <KeyRound />, tone: keysMissing ? 'warning' : 'success' },
+    { id: 'youtube', label: 'YouTube cookies', icon: <KeyRound />, tone: 'idle' },
     { id: 'video', label: 'Video', icon: <Zap />, tone: 'idle' },
     { id: 'vocabulary', label: 'Vocabulary', icon: <BookA />, tone: 'idle' },
     { id: 'output', label: 'Output', icon: <FolderOpen />, tone: 'idle' },
@@ -140,6 +142,10 @@ export function SettingsPage({ showUpdates = 0 }: { showUpdates?: number }): Rea
           </Panel>
 
           <CodexSettings />
+          <Section id="youtube">
+            <PanelHeader title="YouTube cookies" description="Save a YouTube browser session for downloads. These cookies are shared with Create and retries from Jobs. Saving does not check the session with YouTube." />
+            <YouTubeVerification />
+          </Section>
           <Section id="keys">
             <PanelHeader
               icon={<IconTile tone="accent"><KeyRound /></IconTile>}

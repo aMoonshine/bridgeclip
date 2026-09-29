@@ -1,3 +1,4 @@
+import type { YouTubeSessionStatus } from '../shared/youtube'
 import type { CodexStatus } from '../shared/codex'
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
@@ -62,7 +63,7 @@ export interface ToolStatus {
 }
 
 export interface BridgeClipAPI {
-  youtube: { importCookies: () => Promise<boolean>; pasteCookies: (text: string) => Promise<void> }
+  youtube: { sessionStatus: () => Promise<YouTubeSessionStatus>; importCookies: () => Promise<boolean>; pasteCookies: (text: string) => Promise<YouTubeSessionStatus> }
   codex: { status: () => Promise<CodexStatus>; login: () => Promise<CodexStatus>; refreshAuth: () => Promise<void> }
   models: { list: (refresh?: boolean) => Promise<OpenRouterCatalog> }
   automations: {
@@ -186,7 +187,7 @@ function subscribe<T>(channel: string, callback: (data: T) => void): () => void 
 }
 
 const api: BridgeClipAPI = {
-  youtube: { importCookies: () => ipcRenderer.invoke('youtube:importCookies'), pasteCookies: (text: string) => ipcRenderer.invoke('youtube:pasteCookies', text) },
+  youtube: { sessionStatus: () => ipcRenderer.invoke('youtube:sessionStatus'), importCookies: () => ipcRenderer.invoke('youtube:importCookies'), pasteCookies: (text: string) => ipcRenderer.invoke('youtube:pasteCookies', text) },
   codex: { status: () => ipcRenderer.invoke('codex:status'), login: () => ipcRenderer.invoke('codex:login'), refreshAuth: () => ipcRenderer.invoke('codex:refreshAuth') },
   models: { list: (refresh = false) => ipcRenderer.invoke('models:list', refresh) },
   automations: {
