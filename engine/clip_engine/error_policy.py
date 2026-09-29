@@ -48,6 +48,8 @@ def safe_processing_error(error: Exception) -> str:
     if type(error).__name__ == "IntelligencePlanningError" and getattr(error, "status_code", None) == 404:
         return "Planning model unavailable"
     if type(error).__name__ == "VideoDownloadError":
+        if getattr(error, "reason", None) == "quality_unavailable":
+            return "Requested video quality unavailable"
         return TWITCH_ERRORS.get(getattr(error, "reason", None), "Video download failed")
     if type(error).__name__ == "TranscriptionProviderError":
         return {
@@ -107,7 +109,7 @@ def safe_failure_code(error: Exception) -> str:
         return "transcription.unknown"
     if type(error).__name__ == "VideoDownloadError":
         reason = getattr(error, "reason", None)
-        return f"download.{reason}" if reason in TWITCH_ERRORS else "download.failed"
+        return f"download.{reason}" if reason in {*TWITCH_ERRORS, "quality_unavailable"} else "download.failed"
     if type(error).__name__ == "RenderingError":
         return "render.failed"
     return "pipeline.failed"
@@ -120,7 +122,7 @@ def safe_job_error_text(error: str | None) -> str | None:
     if error in TWITCH_ERRORS.values():
         return error
     if error in {
-        "Codex analysis unavailable", "Processing timed out", "Video download failed", "No clip-worthy moments found",
+        "Requested video quality unavailable", "Codex analysis unavailable", "Processing timed out", "Video download failed", "No clip-worthy moments found",
         "Selected planner requires a video with speech", "Planning model unavailable",
         "Planning provider rate limit reached", "Planning model exhausted its output budget",
         "Processing failed", "Job cancelled", "Transcription authentication failed",

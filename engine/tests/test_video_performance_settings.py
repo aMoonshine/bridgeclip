@@ -37,8 +37,8 @@ def test_a_capped_selector_never_offers_more_than_the_ceiling():
 def test_ytdlp_never_selects_a_4k_stream_for_full_hd():
     """Exercise yt-dlp's selector parser, including its slash fallback."""
     formats = [
-        {"format_id": "v4k", "vcodec": "vp9", "acodec": "none", "height": 2160, "ext": "webm"},
         {"format_id": "vhd", "vcodec": "vp9", "acodec": "none", "height": 1080, "ext": "webm"},
+        {"format_id": "v4k", "vcodec": "vp9", "acodec": "none", "height": 2160, "ext": "webm"},
         {"format_id": "audio", "vcodec": "none", "acodec": "opus", "ext": "webm"},
     ]
     for fmt in formats:
@@ -130,3 +130,18 @@ def test_the_cpu_path_is_untouched_by_the_new_settings():
     args = service._video_codec_args(1080, 1920, "30")
     assert args[args.index("-c:v") + 1] == "libx264"
     assert "-crf" in args
+
+
+@pytest.mark.parametrize("available", [360, 720])
+def test_explicit_full_hd_does_not_silently_accept_lower_quality(available):
+    from clip_engine.services.video_downloader import VideoDownloadError
+    from clip_engine.error_policy import safe_failure_code, safe_processing_error, safe_job_error_text
+    downloader = VideoDownloaderService.__new__(VideoDownloaderService)
+    downloader.settings = SimpleNamespace(download_resolution="1080")
+    with pytest.raises(VideoDownloadError) as caught:
+        downloader._check_requested_quality(available)
+    assert safe_failure_code(caught.value) == "download.quality_unavailable"
+    assert safe_job_error_text(safe_processing_error(caught.value)) == "Requested video quality unavailable"
+    downloader._check_requested_quality(1080)
+    downloader.settings.download_resolution = "source"
+    downloader._check_requested_quality(available)

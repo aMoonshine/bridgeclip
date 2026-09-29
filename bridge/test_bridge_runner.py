@@ -251,6 +251,11 @@ class BridgeTests(unittest.TestCase):
                          "There is not enough free disk space to finish this video.")
         self.assertEqual(bridge.describe_failure("Video download failed")["message"], "The video could not be downloaded.")
 
+    def test_requested_quality_failure_explains_how_to_retry(self):
+        failure = bridge.describe_failure("Requested video quality unavailable")
+        self.assertEqual(failure["message"], "YouTube did not provide the requested video quality.")
+        self.assertIn("Source quality", failure["hint"])
+
     def test_twitch_failures_are_actionable_and_safe_for_the_desktop(self):
         cases = {
             "Unsupported Twitch source": "Choose a public, completed Twitch VOD.",

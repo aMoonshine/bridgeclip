@@ -260,3 +260,19 @@ def test_a_corrupt_sidecar_is_ignored(tmp_path):
     key = cache_key(YOUTUBE, "youtube")
     (tmp_path / f"{key}.json").write_text("{not json")
     assert cache.lookup(key) is None
+
+
+def test_full_hd_stops_when_youtube_only_exposes_360p(tmp_path):
+    from clip_engine.services.video_downloader import VideoDownloadError
+    downloader = VideoDownloaderService.__new__(VideoDownloaderService)
+    downloader.settings = SimpleNamespace(download_resolution="1080", max_download_duration_seconds=60)
+    downloader.source_cache = SourceCache(str(tmp_path))
+    async def low_quality(*args, **kwargs):
+        return VideoMetadata("restricted", 10, 640, 360, 30, "18", "youtube")
+    downloader._get_video_info = low_quality
+    def download_forbidden(*args, **kwargs):
+        raise AssertionError("Do not download a known low-quality source")
+    downloader._download_format_selectors = download_forbidden
+    with pytest.raises(VideoDownloadError, match="Requested video quality unavailable"):
+        asyncio.run(downloader._download_from_youtube(YOUTUBE, str(tmp_path / "new.mp4"), str(tmp_path)))
+    assert not (tmp_path / "new.mp4").exists()

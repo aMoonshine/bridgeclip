@@ -66,7 +66,11 @@ def height_capped_selectors(max_height: Optional[int]) -> list[str]:
     if not max_height:
         return list(YOUTUBE_FORMAT_SELECTORS)
     rungs = sorted({h for h in (max_height, 1440, 1080, 720) if h <= max_height}, reverse=True)
-    return [f"{selector}[height<={height}]" for selector in YOUTUBE_FORMAT_SELECTORS for height in rungs]
+    def cap_video_streams(selector, height):
+        return "/".join("+".join(
+            f"{part}[height<={height}]" if part.startswith("b") and not part.startswith("ba") else part
+            for part in alternative.split("+")) for alternative in selector.split("/"))
+    return [cap_video_streams(selector, height) for selector in YOUTUBE_FORMAT_SELECTORS for height in rungs]
 
 
 TWITCH_HOSTS = {"twitch.tv", "www.twitch.tv", "m.twitch.tv", "go.twitch.tv"}
@@ -174,6 +178,12 @@ class VideoDownloaderService:
 
     def _max_source_height(self) -> Optional[int]:
         return DOWNLOAD_RESOLUTION_HEIGHTS.get(getattr(self.settings, "download_resolution", "source"))
+
+    def _check_requested_quality(self, height: int) -> None:
+        requested = self._max_source_height()
+        if requested and height < requested:
+            logger.warning("Requested source: %dp; available/selected source: %dp", requested, height)
+            raise VideoDownloadError("Requested video quality unavailable", reason="quality_unavailable")
 
     def _download_format_selectors(self, source_type: VideoSourceType) -> list[str]:
         ceiling = self._max_source_height()
@@ -422,6 +432,7 @@ class VideoDownloaderService:
                 cached_path, entry = cached
                 self._check_source_size(entry.bytes)
                 metadata = await self._get_video_metadata_ffprobe(cached_path)
+                self._check_requested_quality(metadata.height)
                 if metadata.duration_seconds > max_duration:
                     raise VideoDownloadError(
                         f"Video duration ({metadata.duration_seconds}s) exceeds maximum "
@@ -441,6 +452,7 @@ class VideoDownloaderService:
         metadata = await asyncio.wait_for(
             self._get_video_info(url, deadline=deadline), timeout=DOWNLOAD_DEADLINE_SECONDS
         )
+        self._check_requested_quality(metadata.height)
         if metadata.duration_seconds > max_duration:
             raise VideoDownloadError(
                 f"Video duration ({metadata.duration_seconds}s) exceeds maximum "
@@ -591,6 +603,8 @@ class VideoDownloaderService:
             f"@ {actual_metadata.fps}fps ({file_size / 1024 / 1024:.1f} MB)"
         )
         
+        self._check_requested_quality(actual_metadata.height)
+
         # Warn if we got low quality (less than 720p)
         if actual_metadata.height < 720:
             logger.warning(
@@ -970,6 +984,9 @@ class VideoDownloaderService:
                 )
             raise VideoDownloadError(f"Failed to get video info: {e}")
 
+        heights = sorted({int(finite_number(f.get("height"))) for f in info.get("formats", [])
+                          if finite_number(f.get("height")) > 0 and f.get("vcodec") != "none"})
+        logger.info("Available source heights: %s; selected metadata height: %s", heights, info.get("height"))
         if twitch_url:
             self._validate_twitch_info(info, self.settings.max_download_duration_seconds)
 
