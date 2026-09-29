@@ -173,6 +173,9 @@ test('the native picker authorizes media and shell opening rejects aliased appli
     fs.mkdirSync(library)
     const video = path.join(root, 'selected.mp4')
     fs.writeFileSync(video, '')
+    const cache = path.join(root, 'sources')
+    fs.mkdirSync(cache)
+    const opened = []
     const handlers = new Map()
     const frame = {}
     const contents = { mainFrame: frame }
@@ -180,11 +183,11 @@ test('the native picker authorizes media and shell opening rejects aliased appli
     const ipc = loadSource('ipc-handlers.ts', {
       electron: {
         app: { isPackaged: false },
-        shell: { openPath: async () => { throw new Error('Unexpected shell launch') } },
+        shell: { openPath: async (target) => { opened.push(target); return '' } },
         ipcMain: { handle: (channel, listener) => handlers.set(channel, listener) },
         dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [video] }) }
       },
-      './settings-store': { loadSettings: () => ({ outputDirectory: library }) },
+      './settings-store': { loadSettings: () => ({ outputDirectory: library, sourceCacheDirectory: cache }) },
       './output-libraries': { mediaLibrary: () => library, outputLibraries: () => [library] },
       './source-cache': {}, './codex-service': {},
       './file-manager': {},
@@ -208,6 +211,14 @@ test('the native picker authorizes media and shell opening rejects aliased appli
     assert.throws(() => picker({ sender: contents, senderFrame: {} }), /Unauthorized application request/)
     assert.equal(await picker({ sender: contents, senderFrame: frame }), fs.realpathSync(video))
     assert.doesNotThrow(() => security.assertMediaPath(video, library))
+    const openPath = handlers.get('shell:openPath')
+    const event = { sender: contents, senderFrame: frame }
+    assert.equal(await openPath(event, cache), true)
+    assert.deepEqual(opened, [fs.realpathSync(cache)])
+    await assert.rejects(openPath(event, root), /Invalid media path/)
+    const executable = path.join(cache, 'unsafe.exe')
+    fs.writeFileSync(executable, '')
+    await assert.rejects(openPath(event, executable), /Invalid media path/)
     const bundle = path.join(library, 'unsafe.app')
     fs.mkdirSync(bundle)
     const alias = path.join(library, 'ordinary-folder')

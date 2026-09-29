@@ -289,7 +289,10 @@ export function registerIpcHandlers(getMainWindow: () => BrowserWindow | null): 
     if (!existsSync(path)) return false
     // Check and open the same canonical name: an alias can hide a .app suffix.
     const canonical = realpathSync(path)
-    if (!isWithinDirectory(canonical, mediaLibrary(canonical))) assertMediaPath(canonical, mediaLibrary(canonical))
+    const sourceRoot = loadSettings().sourceCacheDirectory
+    // Opening the configured cache folder is distinct from opening its files.
+    const isSourceRoot = isWithinDirectory(canonical, sourceRoot) && isWithinDirectory(sourceRoot, canonical)
+    if (!isSourceRoot && !isWithinDirectory(canonical, mediaLibrary(canonical))) assertMediaPath(canonical, mediaLibrary(canonical))
     const { statSync } = await import('fs')
     if (statSync(canonical).isDirectory()) {
       if (canonical.split(/[\\/]+/).some((part) => /\.(app|bundle)$/i.test(part))) throw new Error('Application bundles cannot be opened from the library')
